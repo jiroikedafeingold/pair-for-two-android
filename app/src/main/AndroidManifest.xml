@@ -2,6 +2,21 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        Cross-platform local play: mDNS discovery plus a TCP socket on the local network.
+
+        NSD needs no runtime permission, and in particular needs neither location nor
+        NEARBY_WIFI_DEVICES — those are for Wi-Fi Aware and Wi-Fi Direct, which this doesn't use.
+
+        CHANGE_WIFI_MULTICAST_STATE and ACCESS_WIFI_STATE are for the multicast lock: many devices
+        drop multicast traffic to save power unless one is held, and discovery then silently finds
+        nothing at all.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

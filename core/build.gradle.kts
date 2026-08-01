@@ -25,3 +25,16 @@ dependencies {
 tasks.withType<Test>().configureEach {
     useJUnitPlatform()
 }
+
+// The LAN interop harness: the real LanTransport as a command-line process, so it can be paired
+// with the real iOS LANTransport over actual Bonjour. It lives in the test source set because it
+// is dev tooling and must not be reachable from production code. Driven by
+// tools/run-lan-interop.sh in the iOS repo, or directly:
+//
+//   ./gradlew :core:interop --args="--role guest --mode drive --peer Swift"
+tasks.register<JavaExec>("interop") {
+    group = "verification"
+    description = "Runs the LAN interop harness against the iOS transport."
+    mainClass.set("com.jirofeingold.pairfortwo.core.harness.InteropHarnessKt")
+    classpath = sourceSets["test"].runtimeClasspath
+}

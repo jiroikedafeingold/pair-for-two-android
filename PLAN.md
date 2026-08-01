@@ -419,7 +419,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **1** | Project setup, modules, `com.jirofeingold.pairfortwo`, CI-able build | small | ✅ done |
 | **2** | **`PROTOCOL.md` + DTO layer on both sides + golden round-trip tests + iOS dual-format compat (§2.1)** | medium | ✅ done |
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
-| **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | iOS done; Android `:core` done, `NsdManager` glue + harness next |
+| **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | |
 | **6** | UI — game table first (the bulk), then overlays, then chrome | large | |
 | **7** | Persistence, resume, lifecycle | medium | |
@@ -430,6 +430,17 @@ Phases 2 and 4 are where this project succeeds or fails. Phase 6 is the most *ho
 the least risk. **Recommend proving iOS↔Android connectivity end-to-end at the close of
 phase 4** — a Kotlin CLI harness driving a real game against an iPhone, before a single
 Compose screen exists.
+
+**Done, and better than planned.** `Network.framework` works on macOS, so the *shipping*
+`LANTransport.swift` can be built as a command-line process and paired with the *shipping* Kotlin
+`LanTransport` over real Bonjour and a real TCP socket — on the dev machine, with no devices at
+all. `tools/run-lan-interop.sh` (iOS repo) does this in both directions: Swift hosts while Kotlin
+joins, then Kotlin hosts while Swift joins. Each run sends all 16 golden fixtures one at a time,
+then as an unbroken burst, and checks every echo. Because it needs no hardware it is a regression
+test rather than a one-off ceremony, and it can run whenever either transport changes.
+
+Still worth doing once on real hardware before shipping: an actual phone-to-phone run over Wi-Fi,
+which is the only way to exercise NsdManager itself, the multicast lock, and AP isolation.
 
 ---
 
