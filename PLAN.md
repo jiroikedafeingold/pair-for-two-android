@@ -192,18 +192,31 @@ Direct translations, Swift → Kotlin:
 | `Card.swift` (145) | `Card.kt` | `Suit` string enum, `Rank` int enum — mechanical |
 | `CribbageModels.swift` (123) | `Models.kt` | `Deck`, `SeededGenerator` (SplitMix64), `PlayerID`, `Seat`, `ScoringMode`, `GamePhase` |
 | `GameState.swift` (264) | `GameState.kt` | `GameState`, `PlayerSnapshot`, `PlayedCard`, `Claim`, `PegEvent` |
-| `CribbageScorer.swift` (296) | `CribbageScorer.kt` | Pure functions. Fifteens, pairs, runs, flushes, nobs, pegging |
-| `CribbageEngine.swift` (342) | `CribbageEngine.kt` | The referee state machine |
+| `CribbageScorer.swift` (296) | `CribbageScorer.kt` | Pure functions. Fifteens, pairs, runs, flushes, nobs, pegging — **done** |
+| `CribbageEngine.swift` (342) | `CribbageEngine.kt` | The referee state machine — **done** |
 
 Swift value semantics → Kotlin `data class` with `copy()`. `Set`/`Map` map directly.
 Port SplitMix64 exactly (it's specified arithmetic, unlike `shuffle(using:)`).
 
-**Testing.** Add a `tools/fixtures` emitter following the StarBattleAndroid precedent:
-enumerate several thousand hand/starter/crib combinations, score them in Swift via
-`RunCodeSnippet` against `CribbageScorer.swift`, and assert the Kotlin scorer agrees.
-Cribbage scoring has a long tail — nineteen-point hands, five-card double runs, his-nobs vs
-his-heels, flush-in-crib requiring five — and a differential test against the known-good
-Swift implementation is far cheaper than hand-writing cases.
+**Testing — done.** Two differential fixture corpora, both emitted by programs compiled against
+the real Swift sources and committed to *both* repos:
+
+- `fixtures/scorer-v1/` (`tools/generate-scorer-fixtures.sh`) — 11,048 show cases and 4,815
+  pegging cases. The show corpus is exhaustive over all 6,175 five-rank multisets a deck can
+  produce, which covers the fifteens/pairs/runs logic completely, plus an exhaustive suit-structure
+  section for flushes and the crib's flush rule, random deals, and named extremes (the 29,
+  double-double runs, nobs). Compared as ordered flag lists including the `detail` wording.
+- `fixtures/engine-v1/` (`tools/generate-engine-fixtures.sh`) — 150 scripted games, 3,597 steps,
+  ~20% of them illegal intents that must be refused. Each script fixes the deck, hands and starter
+  explicitly and records the **whole state after every step**, plus each handler's boolean return.
+  Turn order and rejection are what matter here: a disagreement there deadlocks a real game rather
+  than mis-scoring it.
+
+Out of scope for the engine corpus by design: anything that reshuffles (`dealNewHand`, the
+cut-for-deal tie recut, `playAgain`), since §0.3 accepts that the platforms don't share a shuffle.
+Those are covered structurally by `EngineTest` on the Kotlin side.
+
+Both suites were mutation-checked rather than trusted for passing first time.
 
 ---
 
@@ -390,17 +403,17 @@ Settings keys to carry over: `soundEnabled`, `hapticsEnabled`, `playerName`, `co
 
 Sequenced so the riskiest, most cross-cutting thing is proven first.
 
-| Phase | Work | Rough size |
-| --- | --- | --- |
-| **1** | Project setup, modules, `com.jirofeingold.pairfortwo`, CI-able build | small |
-| **2** | **`PROTOCOL.md` + DTO layer on both sides + golden round-trip tests + iOS dual-format compat (§2.1)** | medium |
-| **3** | `:core` port — models, scorer, engine + differential fixtures | large |
-| **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large |
-| **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large |
-| **7** | Persistence, resume, lifecycle | medium |
-| **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium |
-| **9** | Play Console setup, signing, icon/splash, store listing, release | medium |
+| Phase | Work | Rough size | Status |
+| --- | --- | --- | --- |
+| **1** | Project setup, modules, `com.jirofeingold.pairfortwo`, CI-able build | small | ✅ done |
+| **2** | **`PROTOCOL.md` + DTO layer on both sides + golden round-trip tests + iOS dual-format compat (§2.1)** | medium | ✅ done |
+| **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
+| **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | iOS side done |
+| **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | |
+| **7** | Persistence, resume, lifecycle | medium | |
+| **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
+| **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |
 
 Phases 2 and 4 are where this project succeeds or fails. Phase 6 is the most *hours* but
 the least risk. **Recommend proving iOS↔Android connectivity end-to-end at the close of

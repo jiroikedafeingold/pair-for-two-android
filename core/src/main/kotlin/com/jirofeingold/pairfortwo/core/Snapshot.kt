@@ -43,7 +43,10 @@ data class PegEvent(val kind: Kind, val scorer: PlayerID, val points: Int) {
     @Serializable
     enum class Kind {
         @SerialName("go") GO,
-        @SerialName("thirtyOne") THIRTY_ONE,
+        @SerialName("thirtyOne") THIRTY_ONE;
+
+        /** The wire/serial name, matching iOS's raw values. */
+        val wireName: String get() = if (this == GO) "go" else "thirtyOne"
     }
 }
 

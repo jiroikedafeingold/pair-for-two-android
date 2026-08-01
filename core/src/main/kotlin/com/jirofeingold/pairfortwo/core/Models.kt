@@ -116,6 +116,22 @@ enum class GamePhase {
 
     val revealsHands: Boolean get() = revealRank >= SHOW_PONE.revealRank
     val revealsCrib: Boolean get() = revealRank >= SHOW_CRIB.revealRank
+
+    /** The wire/serial name, matching iOS's raw values. */
+    val wireName: String
+        get() = when (this) {
+            CONNECTING -> "connecting"
+            CUT_FOR_DEAL -> "cutForDeal"
+            DEALING -> "dealing"
+            DISCARD_TO_CRIB -> "discardToCrib"
+            CUT_STARTER -> "cutStarter"
+            PEGGING -> "pegging"
+            SHOW_PONE -> "showPone"
+            SHOW_DEALER -> "showDealer"
+            SHOW_CRIB -> "showCrib"
+            HAND_COMPLETE -> "handComplete"
+            GAME_OVER -> "gameOver"
+        }
 }
 
 // ---- Seeded RNG ----
@@ -153,6 +169,7 @@ class SeededGenerator(seed: ULong) {
 // ---- Deck ----
 
 /** A standard 52-card deck. */
+@Serializable
 data class Deck(val cards: List<Card>) {
 
     companion object {
