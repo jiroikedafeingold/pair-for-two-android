@@ -95,9 +95,18 @@ object CribbageEngine {
     /**
      * A player lays 2 cards into the crib. When both have discarded, the game moves to the manual
      * starter cut.
+     *
+     * The two cards must be *distinct*. Our own UI can't offer the same card twice, but this is a
+     * guest-supplied intent arriving off the wire: `[X, X]` would pass a count check, remove one
+     * card from the hand and put two copies of it in the crib, leaving the host to peg a five-card
+     * hand against a crib that scores a pair it doesn't hold.
      */
     fun discard(s: GameState, player: PlayerID, cards: List<Card>): Boolean {
-        if (s.phase != GamePhase.DISCARD_TO_CRIB || player in s.discarded || cards.size != 2) return false
+        if (s.phase != GamePhase.DISCARD_TO_CRIB || player in s.discarded ||
+            cards.size != 2 || cards.toSet().size != 2
+        ) {
+            return false
+        }
         val hand = s.hands[player] ?: return false
         if (!cards.all { it in hand }) return false
 
