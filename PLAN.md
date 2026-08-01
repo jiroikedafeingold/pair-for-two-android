@@ -245,7 +245,18 @@ Carry over the behaviours `MultipeerSession` learned the hard way — they are n
 
 ### 4.2 Android — `LanTransport`
 
-- **Discovery:** `NsdManager` register + discover, service type `_pairfortwo._tcp`.
+- **Service type: `_pairfortwo-lan._tcp`**, not `_pairfortwo._tcp` as originally written here.
+  iOS's `MultipeerSession` uses `serviceType = "pairfortwo"`, which makes MultipeerConnectivity
+  register exactly that Bonjour type — so sharing it would make this browser discover Multipeer
+  advertisements, and a guest would open a raw TCP socket to a peer speaking MC's own protocol.
+  Caught while building the iOS side; both platforms now use the `-lan` type.
+- **Where the code lives — amended.** Only *discovery* is Android-specific. Sockets are plain JVM
+  and run unchanged on Android, so the socket state machine, the outbox, the reconnect logic and
+  NDJSON framing live in **`:core`** (`net/LanTransport.kt`, `net/Ndjson.kt`), behind a
+  `LanDiscovery` interface that `:app` implements with `NsdManager`. That is what lets the whole
+  transport be tested over real loopback sockets on the JVM, with no emulator and no second
+  device — including drop-and-reconnect, which is otherwise painful to exercise at all.
+- **Discovery:** `NsdManager` register + discover.
 - **Connection:** host opens a `ServerSocket` on an ephemeral port and advertises it; guest
   resolves and connects. `TCP_NODELAY` on — these are small latency-sensitive messages.
 - **I/O:** Okio buffered source/sink on `Dispatchers.IO`, one coroutine per direction.
@@ -261,9 +272,9 @@ Carry over the behaviours `MultipeerSession` learned the hard way — they are n
 
 ### 4.3 iOS — `LANTransport.swift` (new)
 
-- `NWListener` + `NWBrowser` with a Bonjour service descriptor, same `_pairfortwo._tcp`.
+- `NWListener` + `NWBrowser` with a Bonjour service descriptor, same `_pairfortwo-lan._tcp`.
 - `Info.plist`: `NSLocalNetworkUsageDescription` and `NSBonjourServices`
-  (`_pairfortwo._tcp`). Without these, iOS 14+ silently blocks discovery.
+  (`_pairfortwo-lan._tcp`). Without these, iOS 14+ silently blocks discovery.
 - Local-network permission prompt appears on first use — the connect screen should explain
   *before* triggering it.
 
@@ -408,7 +419,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **1** | Project setup, modules, `com.jirofeingold.pairfortwo`, CI-able build | small | ✅ done |
 | **2** | **`PROTOCOL.md` + DTO layer on both sides + golden round-trip tests + iOS dual-format compat (§2.1)** | medium | ✅ done |
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
-| **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | iOS side done |
+| **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | iOS done; Android `:core` done, `NsdManager` glue + harness next |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | |
 | **6** | UI — game table first (the bulk), then overlays, then chrome | large | |
 | **7** | Persistence, resume, lifecycle | medium | |
