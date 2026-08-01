@@ -1,0 +1,17 @@
+*.iml
+.gradle
+/local.properties
+# IDE state in full, matching StarBattleAndroid. Keeps per-machine paths and editor
+# scratch out of the history.
+.idea/
+.DS_Store
+build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+
+# Release signing — never commit. See RELEASE.md.
+keystore.properties
+*.jks
+*.keystore

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      The launch theme, used for the window before Compose draws its first frame.
+      Dark with a felt background so there is no white flash on cold start — the app is a
+      dark green table on both platforms and has no light mode (PLAN.md §6).
+    -->
+    <style name="Theme.PairForTwo" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/felt_dark</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>

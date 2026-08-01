@@ -1,0 +1,59 @@
+[versions]
+agp = "9.3.1"
+kotlin = "2.2.10"
+composeBom = "2026.02.01"
+
+# The scaffold's core-ktx 1.19.0 / lifecycle 2.11.0 require compileSdk 37, which is not
+# released. Pinned to the newest versions that build against compileSdk 36 — the same pair
+# StarBattleAndroid uses. Revisit when SDK 37 ships.
+activityCompose = "1.9.3"
+coreKtx = "1.15.0"
+coreSplashscreen = "1.0.1"
+datastore = "1.1.1"
+kotlinxCoroutines = "1.9.0"
+kotlinxSerialization = "1.7.3"
+lifecycle = "2.8.7"
+
+# JUnit 5 for JVM unit tests (:core, :app); JUnit 4 + Espresso for instrumented tests.
+junitJupiter = "5.11.4"
+junitPlatform = "1.11.4"
+androidxJunit = "1.3.0"
+espressoCore = "3.7.0"
+
+[libraries]
+# --- :core (pure Kotlin/JVM — no Android dependencies, tests run on the JVM) ---
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerialization" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "kotlinxCoroutines" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter", version.ref = "junitJupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher", version.ref = "junitPlatform" }
+
+# --- :app ---
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-core-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "coreSplashscreen" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+androidx-lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastore" }
+
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-ui-graphics = { module = "androidx.compose.ui:ui-graphics" }
+androidx-compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling" }
+androidx-compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview" }
+androidx-compose-ui-test-manifest = { module = "androidx.compose.ui:ui-test-manifest" }
+androidx-compose-ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
+androidx-compose-material3 = { module = "androidx.compose.material3:material3" }
+androidx-compose-material-icons-extended = { module = "androidx.compose.material:material-icons-extended" }
+# Adaptive chrome by window width — the Android answer to the project's iPad rule.
+androidx-compose-material3-adaptive-navsuite = { module = "androidx.compose.material3:material3-adaptive-navigation-suite" }
+
+# --- instrumented tests ---
+androidx-junit = { module = "androidx.test.ext:junit", version.ref = "androidxJunit" }
+androidx-espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espressoCore" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Only the colours the *XML* theme needs (the launch window, before Compose draws).
+  The real palette lives in ui/theme/Color.kt, generated from the iOS app's Themes.swift
+  by tools/generate_colors.py.
+-->
+<resources>
+    <color name="felt_dark">#FF0D211A</color>
+    <color name="crib_gold">#FFF0C973</color>
+</resources>
