@@ -7,12 +7,15 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Scaffold
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.lifecycleScope
 import com.jirofeingold.pairfortwo.core.GameViewModel
 import com.jirofeingold.pairfortwo.core.PlayerID
 import com.jirofeingold.pairfortwo.core.ScoringMode
+import com.jirofeingold.pairfortwo.feel.GameFeedback
 import com.jirofeingold.pairfortwo.ui.GameTableScreen
 import com.jirofeingold.pairfortwo.ui.theme.PairForTwoTheme
 
@@ -29,18 +32,22 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             PairForTwoTheme {
+                val context = LocalContext.current
+                val feedback = remember { GameFeedback(context, lifecycleScope) }
+                DisposableEffect(Unit) { onDispose { feedback.release() } }
+
                 val vm = remember {
                     GameViewModel.loopback(
                         names = mapOf(PlayerID.ONE to "Ada", PlayerID.TWO to "Bo"),
                         colorIDs = mapOf(PlayerID.ONE to 2, PlayerID.TWO to 7),
                         scope = lifecycleScope,
-                        // The manual score panel isn't ported yet, so automatic scoring is the
-                        // mode that plays end to end today.
-                        scoringMode = ScoringMode.AUTO,
+                        // Feedback mode: the coach flags the scores, the players add them on their
+                        // own sliders. It exercises ScorePanel, which AUTO does not.
+                        scoringMode = ScoringMode.FEEDBACK,
                     )
                 }
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    GameTableScreen(vm, Modifier.padding(innerPadding))
+                    GameTableScreen(vm, Modifier.padding(innerPadding), feedback)
                 }
             }
         }

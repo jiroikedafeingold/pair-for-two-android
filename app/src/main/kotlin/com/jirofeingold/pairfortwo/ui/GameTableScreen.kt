@@ -26,7 +26,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -39,6 +41,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.jirofeingold.pairfortwo.feel.GameFeedback
+import com.jirofeingold.pairfortwo.feel.HapticPatterns
 import com.jirofeingold.pairfortwo.core.GamePhase
 import com.jirofeingold.pairfortwo.core.GameViewModel
 import com.jirofeingold.pairfortwo.core.PlayerID
@@ -67,9 +71,26 @@ import com.jirofeingold.pairfortwo.ui.theme.playerTheme
  * - Sound and haptics, which exist (`feel/`) but aren't wired to these call sites yet.
  */
 @Composable
-fun GameTableScreen(vm: GameViewModel, modifier: Modifier = Modifier) {
+fun GameTableScreen(
+    vm: GameViewModel,
+    modifier: Modifier = Modifier,
+    feedback: GameFeedback? = null,
+) {
     val snapshot by vm.snapshot.collectAsStateWithLifecycle()
     val selected by vm.selectedForDiscard.collectAsStateWithLifecycle()
+
+    // Points staged on the local panel but not yet claimed. Continue folds them in, so a last-card
+    // or go point can't be stranded by moving the game on — the same reason iOS tracks it.
+    var uncommitted by remember { mutableIntStateOf(0) }
+    var clearSignal by remember { mutableIntStateOf(0) }
+    val commitThenAdvance: () -> Unit = {
+        if (uncommitted > 0) {
+            vm.claim(uncommitted, snapshot.you)
+            clearSignal += 1
+            uncommitted = 0
+        }
+        vm.advance()
+    }
 
     BoxWithConstraints(
         modifier
@@ -105,8 +126,12 @@ fun GameTableScreen(vm: GameViewModel, modifier: Modifier = Modifier) {
             // Wrapping also means the band is shorter when there are no flags, which hands the play
             // area more room rather than leaving a dead strip.
             TopBand(
-                vm, snapshot,
-                Modifier
+                vm = vm,
+                s = snapshot,
+                feedback = feedback,
+                clearSignal = clearSignal,
+                onUncommittedChange = { uncommitted = it },
+                modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = topBandHeight)
                     .background(Color.Black.copy(alpha = 0.22f))
@@ -116,6 +141,8 @@ fun GameTableScreen(vm: GameViewModel, modifier: Modifier = Modifier) {
                 vm = vm,
                 s = snapshot,
                 selected = selected,
+                uncommitted = uncommitted,
+                commitThenAdvance = commitThenAdvance,
                 handWidth = handWidth,
                 peggingHandWidth = peggingHandWidth,
                 pileWidth = pileWidth,
@@ -133,7 +160,14 @@ fun GameTableScreen(vm: GameViewModel, modifier: Modifier = Modifier) {
 // ---- Top band ----
 
 @Composable
-private fun TopBand(vm: GameViewModel, s: PlayerSnapshot, modifier: Modifier = Modifier) {
+private fun TopBand(
+    vm: GameViewModel,
+    s: PlayerSnapshot,
+    feedback: GameFeedback?,
+    clearSignal: Int,
+    onUncommittedChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier.padding(top = 12.dp, bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -160,11 +194,49 @@ private fun TopBand(vm: GameViewModel, s: PlayerSnapshot, modifier: Modifier = M
         )
 
         if (s.scoringMode == ScoringMode.AUTO) {
+            // Automatic scoring has no manual controls — just names and scores.
             AutoScoreboard(vm, s)
         } else {
-            // ScorePanel — the manual slider — is not ported yet, so this is a readout rather than
-            // a control. Stated plainly on screen instead of silently looking finished.
-            ManualScorePlaceholder(vm, s)
+            // A panel per peg this device may score: both in pass-and-play, only the local
+            // player's when networked. Capped so a lone panel doesn't stretch across a tablet.
+            Row(
+                Modifier
+                    .widthIn(max = 900.dp)
+                    .padding(horizontal = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                for (player in vm.scorablePlayers) {
+                    val theme = playerTheme(vm.colorID(player))
+                    val isLocal = player == s.you
+                    ScorePanel(
+                        name = vm.name(player),
+                        score = vm.score(player),
+                        opponentScore = vm.score(player.opponent),
+                        primary = theme.primary,
+                        deep = theme.deep,
+                        disabled = s.phase == GamePhase.GAME_OVER || vm.scoringDisabled(player),
+                        canUndo = vm.canUndo(player),
+                        // iOS passes `isLocal ? confirmRelease : false`, and confirmRelease
+                        // defaults to true — so releasing the slider *stages* an amount and the
+                        // +N button commits it, rather than scoring the instant a thumb lifts.
+                        // Becomes a real setting when SettingsScreen lands.
+                        requireConfirm = isLocal,
+                        opponentColor = playerTheme(vm.colorID(player.opponent)).primary,
+                        showOpponentTrack = vm.scorablePlayers.size == 1,
+                        onUncommittedChange = { if (isLocal) onUncommittedChange(it) },
+                        clearSignal = if (isLocal) clearSignal else 0,
+                        onTick = { feedback?.sliderTick(it) },
+                        onPlusHaptic = { feedback?.play(HapticPatterns.Action.SCORE) },
+                        onCommitHaptic = { feedback?.play(HapticPatterns.Action.SCORE) },
+                        onAdd = { vm.claim(it, player) },
+                        onPlusOne = { vm.claim(1, player) },
+                        onUndo = { vm.undo(player) },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(76.dp),
+                    )
+                }
+            }
         }
     }
 }
@@ -208,18 +280,6 @@ private fun ScoreColumn(vm: GameViewModel, player: PlayerID, modifier: Modifier 
     }
 }
 
-@Composable
-private fun ManualScorePlaceholder(vm: GameViewModel, s: PlayerSnapshot) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        AutoScoreboard(vm, s)
-        Text(
-            "Manual scoring panel not ported yet",
-            color = CribGold.copy(alpha = 0.7f),
-            fontSize = 11.sp,
-        )
-    }
-}
-
 // ---- Bottom band ----
 
 @Composable
@@ -227,6 +287,8 @@ private fun BottomBand(
     vm: GameViewModel,
     s: PlayerSnapshot,
     selected: Set<com.jirofeingold.pairfortwo.core.Card>,
+    uncommitted: Int,
+    commitThenAdvance: () -> Unit,
     handWidth: Dp,
     peggingHandWidth: Dp,
     pileWidth: Dp,
@@ -239,9 +301,10 @@ private fun BottomBand(
             GamePhase.CUT_FOR_DEAL -> CutForDealArea(vm, s, cutWidth)
             GamePhase.DISCARD_TO_CRIB -> DiscardArea(vm, s, selected, handWidth)
             GamePhase.CUT_STARTER -> StarterCutArea(vm, s, cutWidth)
-            GamePhase.PEGGING -> PeggingArea(vm, s, peggingHandWidth, pileWidth)
+            GamePhase.PEGGING ->
+                PeggingArea(vm, s, peggingHandWidth, pileWidth, uncommitted, commitThenAdvance)
             GamePhase.SHOW_PONE, GamePhase.SHOW_DEALER, GamePhase.SHOW_CRIB ->
-                ShowArea(vm, s, showWidth)
+                ShowArea(vm, s, showWidth, uncommitted, commitThenAdvance)
             GamePhase.HAND_COMPLETE -> HandCompleteArea(vm, s)
             GamePhase.GAME_OVER -> GameOverArea(vm, s)
             else -> Spacer(Modifier.fillMaxSize())
@@ -407,7 +470,14 @@ private fun DeckPile(width: Dp, highlighted: Boolean, modifier: Modifier = Modif
 }
 
 @Composable
-private fun PeggingArea(vm: GameViewModel, s: PlayerSnapshot, handWidth: Dp, pileWidth: Dp) {
+private fun PeggingArea(
+    vm: GameViewModel,
+    s: PlayerSnapshot,
+    handWidth: Dp,
+    pileWidth: Dp,
+    uncommitted: Int,
+    commitThenAdvance: () -> Unit,
+) {
     Column(
         Modifier.fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -419,7 +489,12 @@ private fun PeggingArea(vm: GameViewModel, s: PlayerSnapshot, handWidth: Dp, pil
 
         if (vm.peggingComplete) {
             if (vm.youStartCount) {
-                GoldButton("Count the hands") { vm.advance() }
+                // Folding in a staged amount here matters: last-card, go and 31 points are claimed
+                // during pegging, and moving to the count would otherwise strand them.
+                GoldButton(
+                    if (uncommitted > 0) "Add $uncommitted & count the hands" else "Count the hands",
+                    commitThenAdvance,
+                )
             } else {
                 WaitingLabel("Waiting for ${vm.name(s.lastToPlay ?: s.you)}…")
             }
@@ -449,7 +524,13 @@ private fun PeggingArea(vm: GameViewModel, s: PlayerSnapshot, handWidth: Dp, pil
 }
 
 @Composable
-private fun ShowArea(vm: GameViewModel, s: PlayerSnapshot, pileWidth: Dp) {
+private fun ShowArea(
+    vm: GameViewModel,
+    s: PlayerSnapshot,
+    pileWidth: Dp,
+    uncommitted: Int,
+    commitThenAdvance: () -> Unit,
+) {
     val isCrib = s.phase == GamePhase.SHOW_CRIB
     // The crib adds a badge, so shrink its cards a touch to keep the group and the button on screen.
     val cardW = if (isCrib) pileWidth * 0.8f else pileWidth
@@ -505,7 +586,7 @@ private fun ShowArea(vm: GameViewModel, s: PlayerSnapshot, pileWidth: Dp) {
                 color = Color.White.copy(alpha = 0.7f),
                 fontSize = 12.sp,
             )
-            GoldButton("Continue") { vm.advance() }
+            GoldButton(if (uncommitted > 0) "Add $uncommitted & continue" else "Continue", commitThenAdvance)
         } else {
             WaitingLabel("Waiting for ${vm.name(vm.showCountingPlayer ?: s.you)} to count…")
         }
