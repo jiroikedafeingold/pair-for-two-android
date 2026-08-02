@@ -25,6 +25,9 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -119,7 +123,16 @@ fun GameTableScreen(
         // and Compose drops the "Tap to cut" caption entirely. 0.20 leaves it room.
         val cutWidth = minOf(handWidth * 0.6f, playHeight * 0.18f)
 
-        Column(Modifier.fillMaxSize()) {
+        val winner = vm.winnerInfo
+        // iOS puts the game-over card over an .ultraThinMaterial, which blurs the table rather than
+        // merely dimming it. Compose has no equivalent material, so the table itself is blurred.
+        // Modifier.blur is a no-op below API 31, where the scrim alone still reads clearly.
+        val tableBlur by animateDpAsState(
+            if (winner != null) 18.dp else 0.dp,
+            tween(500),
+            label = "tableBlur",
+        )
+        Column(Modifier.fillMaxSize().blur(tableBlur)) {
             // The Swift pins this band to a fixed height and clips. Here it sizes to its content
             // up to the same cap instead: Android's text measures a little taller, and at a fixed
             // height the scoreboard's digits were sliced off the moment the flag chips appeared.
@@ -153,6 +166,30 @@ fun GameTableScreen(
                     .weight(1f)
                     .padding(vertical = 14.dp),
             )
+        }
+
+        if (winner != null) {
+            val (who, skunk) = winner
+            // Pass-and-play has one device and one screen, so it always shows the celebration.
+            // Networked, each device shows its own outcome.
+            val youWon = vm.isLoopback || who == snapshot.you
+            LaunchedEffect(who, skunk, youWon) {
+                if (youWon) feedback?.playWin(skunk) else feedback?.playLose()
+            }
+            if (youWon) {
+                WinnerOverlay(
+                    winnerName = vm.name(who),
+                    skunk = skunk,
+                    winnerColor = playerTheme(vm.colorID(who)).primary,
+                    onPlayAgain = { feedback?.stopCelebration(); vm.playAgain() },
+                )
+            } else {
+                LoserOverlay(
+                    winnerName = vm.name(who),
+                    skunk = skunk,
+                    onPlayAgain = { vm.playAgain() },
+                )
+            }
         }
     }
 }
@@ -306,7 +343,7 @@ private fun BottomBand(
             GamePhase.SHOW_PONE, GamePhase.SHOW_DEALER, GamePhase.SHOW_CRIB ->
                 ShowArea(vm, s, showWidth, uncommitted, commitThenAdvance)
             GamePhase.HAND_COMPLETE -> HandCompleteArea(vm, s)
-            GamePhase.GAME_OVER -> GameOverArea(vm, s)
+            GamePhase.GAME_OVER -> Spacer(Modifier.fillMaxSize())   // the overlay covers this
             else -> Spacer(Modifier.fillMaxSize())
         }
     }
@@ -612,35 +649,6 @@ private fun HandCompleteArea(vm: GameViewModel, s: PlayerSnapshot) {
         } else {
             WaitingLabel("Waiting for ${vm.name(vm.nextDealer)} to deal…")
         }
-    }
-}
-
-/** A stand-in until `WinnerOverlay` and `LoserOverlay` are ported. */
-@Composable
-private fun GameOverArea(vm: GameViewModel, s: PlayerSnapshot) {
-    val info = vm.winnerInfo
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        Text(
-            when (info?.second) {
-                com.jirofeingold.pairfortwo.core.SkunkLevel.DOUBLE -> "DOUBLE SKUNK!"
-                com.jirofeingold.pairfortwo.core.SkunkLevel.SINGLE -> "SKUNKED!"
-                else -> "VICTORY"
-            },
-            color = CribGold,
-            fontSize = 30.sp,
-            fontWeight = FontWeight.Black,
-        )
-        Text(vm.coachBanner, color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-        Text(
-            "${s.yourName} ${s.yourScore}  •  ${s.opponentName} ${s.opponentScore}",
-            color = Color.White.copy(alpha = 0.85f),
-            fontSize = 15.sp,
-        )
-        GoldButton("Play again") { vm.playAgain() }
     }
 }
 
