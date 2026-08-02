@@ -1,6 +1,7 @@
 package com.jirofeingold.pairfortwo.ui
 
 import androidx.annotation.DrawableRes
+import androidx.compose.runtime.compositionLocalOf
 import com.jirofeingold.pairfortwo.R
 
 /**
@@ -20,3 +21,13 @@ enum class CardBack(val id: Int, val displayName: String, @param:DrawableRes val
         fun from(id: Int): CardBack = entries.firstOrNull { it.id == id } ?: ROYAL
     }
 }
+
+/**
+ * The chosen card back, ambient for the whole table.
+ *
+ * Every face-down card should use it, and there are a dozen of those across the table, the pile and
+ * the hand — threading an id through all of them would be noise at each call site for a value that
+ * never varies within a screen. iOS reads the same setting straight from `@AppStorage` inside
+ * `CardView`; this is the Compose equivalent, with the setting still owned by one place.
+ */
+val LocalCardBackID = compositionLocalOf { 0 }

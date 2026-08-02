@@ -73,7 +73,7 @@ fun CardView(
     isDimmed: Boolean = false,
     isHighlighted: Boolean = false,
     width: Dp = 72.dp,
-    cardBackID: Int = 0,
+    cardBackID: Int = LocalCardBackID.current,
 ) {
     val height = width * 1.45f
     val corner = width * 0.13f

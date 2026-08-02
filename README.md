@@ -34,11 +34,16 @@ $ANDROID_HOME/platform-tools/adb shell am start -n com.jirofeingold.pairfortwo/.
 The table is playable end to end for one hand at a time: cut for deal, discard to the crib, the
 two-step starter cut, pegging, the three shows, then the next hand. Scoring works both ways — the
 slider stages an amount and the **+N** button commits it, or **+1** adds a point immediately.
+Both players' panels use the same gesture; the **gear** in the top right opens Settings, where
+"Confirm after release" switches the slider between staging and adding on release.
+
+Settings also carries the scoring mode, the card back, and the sound/haptics/celebration/score-ring
+switches. They persist, and they take effect on the table immediately.
 
 **The game is landscape only.** The layout is designed for it, exactly as the iOS one is.
 
-Not there yet: the winner and loser celebrations, the scoring replay, check-my-count, and all the
-chrome — menu, connect screen, settings, help, onboarding.
+Not there yet: the scoring replay, check-my-count, and the rest of the chrome — menu, connect
+screen, help, onboarding. Settings has no name/colour section until the connect screen exists.
 
 ## Tests
 

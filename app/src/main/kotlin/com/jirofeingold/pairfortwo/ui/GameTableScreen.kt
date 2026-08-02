@@ -20,9 +20,13 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.animateDpAsState
@@ -30,6 +34,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -68,30 +73,43 @@ import com.jirofeingold.pairfortwo.ui.theme.playerTheme
  *
  * ## Not yet ported
  *
- * - **`ScorePanel`** — the manual peg slider, ~500 lines of custom drawing in the Swift and a piece
- *   of work in its own right. Until it lands, the manual scoring modes show a plain readout, and
- *   [ScoringMode.AUTO] is fully playable.
- * - The winner, loser, replay and check-my-count overlays.
- * - Sound and haptics, which exist (`feel/`) but aren't wired to these call sites yet.
+ * - The replay and check-my-count overlays.
+ *
+ * @param confirmRelease the "Confirm after release" setting: the slider stages an amount and the
+ *   +N button commits it, rather than scoring the moment a thumb lifts. Applies to *every* panel on
+ *   screen — in pass-and-play both players get the same gesture, which is the whole point of it
+ *   being a setting rather than a property of whose panel it is.
+ * @param scoreTrackEnabled "Score progress rings" — the cribbage track drawn around each panel.
+ * @param celebrationEffects "Celebration effects" — fireworks and confetti on the win screen. The
+ *   win screen itself always shows.
+ * @param onOpenSettings opens the settings screen from the table's top-right control.
  */
 @Composable
 fun GameTableScreen(
     vm: GameViewModel,
     modifier: Modifier = Modifier,
     feedback: GameFeedback? = null,
+    confirmRelease: Boolean = true,
+    scoreTrackEnabled: Boolean = true,
+    celebrationEffects: Boolean = true,
+    onOpenSettings: (() -> Unit)? = null,
 ) {
     val snapshot by vm.snapshot.collectAsStateWithLifecycle()
     val selected by vm.selectedForDiscard.collectAsStateWithLifecycle()
 
-    // Points staged on the local panel but not yet claimed. Continue folds them in, so a last-card
-    // or go point can't be stranded by moving the game on — the same reason iOS tracks it.
-    var uncommitted by remember { mutableIntStateOf(0) }
+    // Points staged on a panel but not yet claimed, per player — pass-and-play shows a panel each
+    // and either can be mid-stage. Continue folds them in, so a last-card or go point can't be
+    // stranded by moving the game on — the same reason iOS tracks it.
+    val uncommitted = remember { mutableStateMapOf<PlayerID, Int>() }
     var clearSignal by remember { mutableIntStateOf(0) }
     val commitThenAdvance: () -> Unit = {
-        if (uncommitted > 0) {
-            vm.claim(uncommitted, snapshot.you)
+        // Stable claim order, so which peg lands first at 121 never depends on map iteration.
+        val staged = PlayerID.entries
+            .mapNotNull { player -> uncommitted[player]?.takeIf { it > 0 }?.let { player to it } }
+        if (staged.isNotEmpty()) {
+            staged.forEach { (player, amount) -> vm.claim(amount, player) }
             clearSignal += 1
-            uncommitted = 0
+            uncommitted.clear()
         }
         vm.advance()
     }
@@ -142,8 +160,10 @@ fun GameTableScreen(
                 vm = vm,
                 s = snapshot,
                 feedback = feedback,
+                confirmRelease = confirmRelease,
+                scoreTrackEnabled = scoreTrackEnabled,
                 clearSignal = clearSignal,
-                onUncommittedChange = { uncommitted = it },
+                onUncommittedChange = { player, amount -> uncommitted[player] = amount },
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = topBandHeight)
@@ -154,7 +174,7 @@ fun GameTableScreen(
                 vm = vm,
                 s = snapshot,
                 selected = selected,
-                uncommitted = uncommitted,
+                uncommitted = uncommitted.values.sum(),
                 commitThenAdvance = commitThenAdvance,
                 handWidth = handWidth,
                 peggingHandWidth = peggingHandWidth,
@@ -165,6 +185,18 @@ fun GameTableScreen(
                     .fillMaxWidth()
                     .weight(1f)
                     .padding(vertical = 14.dp),
+            )
+        }
+
+        // The top-right controls, over the band. iOS pairs the gear with a "?" for Help; that
+        // screen isn't ported yet, so there is one button until it is.
+        if (onOpenSettings != null) {
+            ControlButton(
+                onClick = onOpenSettings,
+                description = "Settings",
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 10.dp),
             )
         }
 
@@ -181,16 +213,45 @@ fun GameTableScreen(
                     winnerName = vm.name(who),
                     skunk = skunk,
                     winnerColor = playerTheme(vm.colorID(who)).primary,
+                    celebrationEffects = celebrationEffects,
                     onPlayAgain = { feedback?.stopCelebration(); vm.playAgain() },
                 )
             } else {
                 LoserOverlay(
                     winnerName = vm.name(who),
                     skunk = skunk,
+                    celebrationEffects = celebrationEffects,
                     onPlayAgain = { vm.playAgain() },
                 )
             }
         }
+    }
+}
+
+/** The table's own chrome button — iOS's `controlButton`: a 32pt dark disc, dimmed white glyph. */
+@Composable
+private fun ControlButton(
+    onClick: () -> Unit,
+    description: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier
+            .size(32.dp)
+            .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            Icons.Filled.Settings,
+            contentDescription = description,
+            tint = Color.White.copy(alpha = 0.7f),
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
@@ -201,8 +262,10 @@ private fun TopBand(
     vm: GameViewModel,
     s: PlayerSnapshot,
     feedback: GameFeedback?,
+    confirmRelease: Boolean,
+    scoreTrackEnabled: Boolean,
     clearSignal: Int,
-    onUncommittedChange: (Int) -> Unit,
+    onUncommittedChange: (PlayerID, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -244,7 +307,6 @@ private fun TopBand(
             ) {
                 for (player in vm.scorablePlayers) {
                     val theme = playerTheme(vm.colorID(player))
-                    val isLocal = player == s.you
                     ScorePanel(
                         name = vm.name(player),
                         score = vm.score(player),
@@ -253,15 +315,16 @@ private fun TopBand(
                         deep = theme.deep,
                         disabled = s.phase == GamePhase.GAME_OVER || vm.scoringDisabled(player),
                         canUndo = vm.canUndo(player),
-                        // iOS passes `isLocal ? confirmRelease : false`, and confirmRelease
-                        // defaults to true — so releasing the slider *stages* an amount and the
-                        // +N button commits it, rather than scoring the instant a thumb lifts.
-                        // Becomes a real setting when SettingsScreen lands.
-                        requireConfirm = isLocal,
+                        // Every panel obeys the setting. iOS applies it to the local panel only
+                        // (`isLocal ? confirmRelease : false`), which in pass-and-play gives the
+                        // two players different gestures on the same screen — one stages, one
+                        // scores on release. Deliberate divergence.
+                        requireConfirm = confirmRelease,
                         opponentColor = playerTheme(vm.colorID(player.opponent)).primary,
                         showOpponentTrack = vm.scorablePlayers.size == 1,
-                        onUncommittedChange = { if (isLocal) onUncommittedChange(it) },
-                        clearSignal = if (isLocal) clearSignal else 0,
+                        showScoreTrack = scoreTrackEnabled,
+                        onUncommittedChange = { onUncommittedChange(player, it) },
+                        clearSignal = clearSignal,
                         onTick = { feedback?.sliderTick(it) },
                         onPlusHaptic = { feedback?.play(HapticPatterns.Action.SCORE) },
                         onCommitHaptic = { feedback?.play(HapticPatterns.Action.SCORE) },

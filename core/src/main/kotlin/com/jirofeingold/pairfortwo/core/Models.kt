@@ -58,6 +58,22 @@ enum class ScoringMode(val value: Int) {
     val showsFlags: Boolean get() = this != OFF
     val isAuto: Boolean get() = this == AUTO
 
+    /** Settings-screen label, same wording as iOS's `ScoringMode.title`. */
+    val title: String
+        get() = when (this) {
+            AUTO -> "Automatic"
+            FEEDBACK -> "Feedback"
+            OFF -> "Player responsibility"
+        }
+
+    /** The one-line explanation under [title], same wording as iOS's `ScoringMode.detail`. */
+    val detail: String
+        get() = when (this) {
+            AUTO -> "The app counts and adds every score for you."
+            FEEDBACK -> "The app shows each score and the total; you add them on your slider."
+            OFF -> "No hints — you count and add every score yourself."
+        }
+
     companion object {
         private val byValue = entries.associateBy(ScoringMode::value)
 

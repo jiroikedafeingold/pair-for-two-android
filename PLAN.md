@@ -350,7 +350,7 @@ chrome around it should feel native.**
 | `WinnerOverlay` (405) | `GameOverOverlay.kt` | **Done.** Fireworks and confetti are `Canvas` particle systems on a single frame clock, rather than 120 individual animations. `.ultraThinMaterial` has no Compose equivalent, so the table itself is blurred behind the card — a no-op below API 31, where the scrim alone still reads. |
 | `LoserOverlay`, `ScoreFlagsView`, `PlayPileView`, `HandView` | direct ports | **Done.** `LoserOverlay` only appears on a networked loser's device, so it is so far untested on screen. |
 | `ScoringReplayView` | `ScoringReplay.kt` | Not yet ported. |
-| `SettingsView` | `SettingsScreen.kt` | **Android-native.** Material 3 `ListItem` + `Switch`, `LargeTopAppBar` with a back arrow — not an iOS `Form`, not swipe-back. |
+| `SettingsView` | `SettingsScreen.kt` | **Done, minus the settings with nothing to act on yet** (name/colour, scoring replay). **Android-native:** Material 3 `ListItem` + `Switch`, back arrow. A small `TopAppBar`, not the `LargeTopAppBar` sketched here — the game is landscape-locked and a large bar spends a third of the height on its own title. Reached from a gear control on the table, as on iOS. |
 | `HelpView`, `OnboardingView` | `HelpScreen.kt`, `OnboardingScreen.kt` | Compose; onboarding via `HorizontalPager` + `PagerIndicator`. |
 | `ConnectView`, `InvitePlayersView` | `ConnectScreen.kt` | **Android-native** Material 3 list, with an explicit network-trouble state (§4.2). |
 | `RootView`, `ContentView` | `RootScaffold.kt` | Menu keeps the felt look; Material 3 buttons. **No "Play online" entry.** |
@@ -389,7 +389,17 @@ Straight mapping of `Persistence.swift`:
   reliably identifies the true host on resume."
 
 Settings keys to carry over: `soundEnabled`, `hapticsEnabled`, `playerName`, `colorID`,
-`cardBackID`, scoring mode, onboarding-seen.
+`cardBackID`, `confirmRelease`, scoring mode, onboarding-seen.
+
+**Done for the settings the ported screens can act on** — `settings/SettingsStore.kt`, a DataStore
+Preferences store keyed identically to iOS's `@AppStorage`, read by `MainActivity` and pushed into
+the table, `GameFeedback` and `LocalCardBackID`. `localName` / `localColorID` wait for ConnectScreen
+and `replayBeforeWin` for ScoringReplay; there is no point storing a setting nothing reads.
+
+`confirmRelease` (default on). **Deliberate divergence:** iOS applies it to the local panel only
+(`isLocal ? confirmRelease : false`), so in pass-and-play the two panels on one screen get
+different gestures — one stages for the +N button, the other scores the moment the thumb lifts.
+Android applies it to every panel. The iOS side is worth the same fix.
 
 ---
 
@@ -435,8 +445,8 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table + manual scoring playable; overlays and chrome remain |
-| **7** | Persistence, resume, lifecycle | medium | |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table, overlays and Settings done; connect/menu/help/onboarding and `ScoringReplay` remain |
+| **7** | Persistence, resume, lifecycle | medium | settings done (§7); saved game and resume remain |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |
 
