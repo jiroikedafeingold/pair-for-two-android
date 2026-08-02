@@ -31,7 +31,6 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -187,7 +186,7 @@ private fun CornerIndex(card: Card, ink: Color, width: Dp, modifier: Modifier = 
                 // explicitly sizes to avoid. Trimming both is what makes the two layouts agree.
                 lineHeight = rankSize.sp,
                 platformStyle = PlatformTextStyle(includeFontPadding = false),
-                lineHeightStyle = TIGHT_LINE_HEIGHT,
+                lineHeightStyle = TightLineHeight,
             ),
         )
         SuitSymbol(
@@ -197,12 +196,6 @@ private fun CornerIndex(card: Card, ink: Color, width: Dp, modifier: Modifier = 
         )
     }
 }
-
-/** Packs a single line to its glyphs, with no extra leading above or below. */
-private val TIGHT_LINE_HEIGHT = LineHeightStyle(
-    alignment = LineHeightStyle.Alignment.Center,
-    trim = LineHeightStyle.Trim.Both,
-)
 
 /**
  * The back design, shown whole (`Fit`) so none of the art is cropped, over a blurred copy that

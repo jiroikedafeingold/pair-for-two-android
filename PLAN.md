@@ -344,7 +344,7 @@ chrome around it should feel native.**
 
 | iOS | Android | Treatment |
 | --- | --- | --- |
-| `GameTableView` (1119) | `GameTableScreen.kt` | **Faithful port.** Bespoke felt surface, proportional layout via `BoxWithConstraints` (the Swift already uses ratio-driven `GeometryReader`, not size classes). Should be visually indistinguishable. |
+| `GameTableView` (1119) | `GameTableScreen.kt` | **First cut done** — every phase of a hand plays through on a device. Proportional layout via `BoxWithConstraints`, from the same ratios the Swift's `GeometryReader` computes. One deliberate structural change: the top band **wraps to a cap** rather than being pinned and clipped, because Android text measures taller and the scoreboard's digits were being sliced off whenever the flag chips appeared. |
 | `CardView` (121) | `CardView.kt` | **Done.** Suit symbols are *drawn paths*, not the ♠♥♦♣ characters: Android maps those to whichever font the vendor chose, the metrics differ sharply from SF's, and some devices render them as colour emoji. The first device screenshot showed glyphs thick enough to collide with the centre pip. |
 | `ScorePanel` (494) | `ScorePanel.kt` | Faithful — custom track shapes, `PointsSlider`, skunk ticks. Ports to `Path`/`Canvas`. |
 | `WinnerOverlay` (405) | `WinnerOverlay.kt` | Faithful. Fireworks + confetti in Compose `Canvas` driven by `withInfiniteAnimationFrameNanos`. |
@@ -427,7 +427,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — `GameViewModel` + `CardView` done |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table playable end to end; `ScorePanel` + overlays + chrome remain |
 | **7** | Persistence, resume, lifecycle | medium | |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |
