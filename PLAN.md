@@ -294,9 +294,12 @@ same list, optionally with a small platform glyph.
 iOS synthesizes nine effects in `GameFeedback.swift` (click, tick, flip, whoosh, riffle,
 ding, chime, go, firework) with deterministic noise, so they're identical every run.
 
-- Port the DSP functions to a small generator script, render all nine to 44.1 kHz mono
-  16-bit WAV **once**, and commit them to `app/src/main/res/raw/`. Byte-identical audio to
-  iOS, zero runtime cost, zero launch hit.
+- **Done, and stronger than "port the DSP".** The synthesis was *extracted* from
+  `GameFeedback.swift` into a Foundation-only `SoundSynthesis.swift`, which iOS still uses at
+  launch and which `tools/render-sounds.sh` compiles into a command-line renderer. The nine WAVs
+  in `app/src/main/res/raw/` therefore come from the very code iOS plays, rather than from a
+  re-implementation that could drift. The extraction was verified byte-identical against the
+  pre-refactor code, effect by effect.
 - `SoundPool`, `maxStreams = 8`, `USAGE_GAME` / `CONTENT_TYPE_SONIFICATION`.
 - Celebration volley: the same 14 pops with randomised rate `0.88–1.22` and volume
   `0.65–1.0`. `SoundPool.play()` takes both, so this ports exactly.
@@ -324,8 +327,10 @@ Mapping strategy for the eleven `GameFeedback.Action` cases plus win/lose/slider
   plain on/off pulses; else silent.
 - **Honour the system haptics setting** (`Settings.System.HAPTIC_FEEDBACK_ENABLED`) on top
   of the app's own toggle. iOS has no equivalent, but ignoring it on Android is wrong.
-- **Win celebration** scaled by skunk level (4.0s/46 bursts → 5.5s/72 → 7.0s/100) as a long
-  composition; Android caps composition length, so chain segments.
+- **Win celebration** scaled by skunk level (4.0s/46 bursts → 5.5s/72 → 7.0s/100). Chaining
+  segments turned out to be unnecessary: the two continuous layers and the intensity curve put
+  this on the waveform path, and `createWaveform` has no composition-length cap — 7 s at the
+  renderer's 10 ms step is 700 entries.
 
 Files: `feel/SoundEffects.kt`, `feel/HapticsController.kt`, `feel/GameFeedback.kt`
 (the unified `play(action)` entry point matching iOS).
@@ -420,7 +425,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **2** | **`PROTOCOL.md` + DTO layer on both sides + golden round-trip tests + iOS dual-format compat (§2.1)** | medium | ✅ done |
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
-| **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | |
+| **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
 | **6** | UI — game table first (the bulk), then overlays, then chrome | large | |
 | **7** | Persistence, resume, lifecycle | medium | |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
