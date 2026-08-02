@@ -96,7 +96,7 @@ fun GameTableScreen(vm: GameViewModel, modifier: Modifier = Modifier) {
         // so it is sized off the play area rather than the width. The Swift uses 0.24 here; on
         // Android the labels and the button measure a little taller, and at 0.24 the group overflows
         // and Compose drops the "Tap to cut" caption entirely. 0.20 leaves it room.
-        val cutWidth = minOf(handWidth * 0.6f, playHeight * 0.20f)
+        val cutWidth = minOf(handWidth * 0.6f, playHeight * 0.18f)
 
         Column(Modifier.fillMaxSize()) {
             // The Swift pins this band to a fixed height and clips. Here it sizes to its content
@@ -275,7 +275,7 @@ private fun CutForDealArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp) {
                 modifier = Modifier.tappable { vm.cut() },
             ) {
                 CardView(null, faceUp = false, width = width * 0.85f)
-                Text("Tap to cut", color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                Text("Tap to cut", color = Color.White, style = tightTextStyle(15.sp, FontWeight.SemiBold))
             }
             else -> WaitingLabel("Waiting for ${s.opponentName} to cut…")
         }
@@ -290,7 +290,12 @@ private fun CutResult(vm: GameViewModel, s: PlayerSnapshot, player: PlayerID, wi
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(vm.name(player), color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp, maxLines = 1)
+        Text(
+            vm.name(player),
+            color = Color.White.copy(alpha = 0.7f),
+            maxLines = 1,
+            style = tightTextStyle(12.sp),
+        )
         val card = s.cutForDeal[player]
         if (card != null) {
             CardView(card, isHighlighted = isWinner, width = width)
@@ -300,8 +305,7 @@ private fun CutResult(vm: GameViewModel, s: PlayerSnapshot, player: PlayerID, wi
         Text(
             if (isWinner) "deals · crib" else " ",
             color = CribGold,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.Bold,
+            style = tightTextStyle(11.sp, FontWeight.Bold),
             // The column is only as wide as a card, so this must not wrap — left to itself it
             // becomes two lines and shoves the Deal button down.
             maxLines = 1,
@@ -372,11 +376,11 @@ private fun StarterCutArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp) {
         when {
             vm.youLiftCut -> Text(
                 "Tap the deck to cut",
-                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                color = Color.White, style = tightTextStyle(15.sp, FontWeight.SemiBold),
             )
             vm.youRevealStarter -> Text(
                 "Tap the deck to turn up the cut",
-                color = Color.White, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                color = Color.White, style = tightTextStyle(15.sp, FontWeight.SemiBold),
             )
             else -> WaitingLabel(
                 if (lifted) "Waiting for ${vm.name(s.dealer)} to turn up the cut…"

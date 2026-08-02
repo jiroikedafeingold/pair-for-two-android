@@ -363,9 +363,16 @@ Android specifics to get right:
 - **Edge-to-edge** with proper `WindowInsets` — mandatory on Android 15+.
 - **No Material You dynamic colour.** The felt/gold palette and the twelve player themes are
   brand identity and must match iOS; dynamic colour would break parity. Fixed dark theme.
+- **Landscape only** (`android:screenOrientation="sensorLandscape"`). The table is designed for
+  it — the Swift's own comment is "Landscape: top ~1/3 is the scoreboard… bottom ~2/3 is the
+  shared play area" — and in portrait the bands stretch into mostly empty felt. `sensorLandscape`
+  rather than `landscape` so the device can be held either way up, which matters for a game two
+  people pass between them.
 - **Tablets and foldables** — the Android answer to your iPad rule. `WindowSizeClass`; the
   table scales proportionally already, so the work is in the chrome. Test on a tablet
-  emulator and a fold posture.
+  emulator and a fold posture. **Note:** from Android 16, an app targeting SDK 36 has its
+  orientation restriction *ignored* on large screens (smallest width ≥ 600dp), so a tablet may
+  still present portrait despite the lock. Worth confirming on real hardware.
 - `core-splashscreen` for the existing splash art.
 
 ---
