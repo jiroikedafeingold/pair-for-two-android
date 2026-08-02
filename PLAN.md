@@ -353,6 +353,7 @@ chrome around it should feel native.**
 | `HelpView`, `OnboardingView` | `HelpScreen.kt`, `OnboardingScreen.kt` | Compose; onboarding via `HorizontalPager` + `PagerIndicator`. |
 | `ConnectView`, `InvitePlayersView` | `ConnectScreen.kt` | **Android-native** Material 3 list, with an explicit network-trouble state (§4.2). |
 | `RootView`, `ContentView` | `RootScaffold.kt` | Menu keeps the felt look; Material 3 buttons. **No "Play online" entry.** |
+| `GameViewModel` (31 KB) | `core/GameViewModel.kt` | **Done**, and deliberately in `:core`, not `:app`: it imports no Compose — the Android form of the project's "view models never import SwiftUI" rule — and a whole game plays out in a JVM test as a result. |
 | `MatchmakerView`, `GameCenterManager`, `GameCenterTransport` | — | **Not ported.** |
 
 Android specifics to get right:
@@ -426,7 +427,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — `CardView` done |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — `GameViewModel` + `CardView` done |
 | **7** | Persistence, resume, lifecycle | medium | |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |
