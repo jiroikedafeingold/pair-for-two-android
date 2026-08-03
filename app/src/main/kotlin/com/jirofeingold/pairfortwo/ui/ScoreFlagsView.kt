@@ -3,10 +3,12 @@ package com.jirofeingold.pairfortwo.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,6 +30,11 @@ import com.jirofeingold.pairfortwo.ui.theme.FeltDark
  *
  * Flag-only: they inform, they never apply themselves. Tinted in the scoring player's colour and led
  * by their name, so it is clear whose points these are.
+ *
+ * @param vertical lay the chips out as a scrolling column instead of a scrolling row. The table
+ *   stacks them down the narrow action rail (see `GameTableScreen`); the horizontal form is what a
+ *   wide strip would use, and is kept because it is the shape the previews and any future banner
+ *   want.
  */
 @Composable
 fun ScoreFlagsView(
@@ -35,64 +42,88 @@ fun ScoreFlagsView(
     modifier: Modifier = Modifier,
     accent: Color = CribGold,
     playerName: String? = null,
+    vertical: Boolean = false,
 ) {
     if (flags.isEmpty()) return
 
-    Row(
-        modifier
-            .height(30.dp)
-            .horizontalScroll(rememberScrollState())
-            .padding(horizontal = 2.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        if (playerName != null) {
-            Text(
-                playerName.uppercase(),
-                color = accent,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier.padding(end = 2.dp),
-            )
+    if (vertical) {
+        Column(
+            modifier.verticalScroll(rememberScrollState()),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Chips(flags, accent, playerName)
         }
+    } else {
+        Row(
+            modifier
+                .height(30.dp)
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Chips(flags, accent, playerName)
+        }
+    }
+}
 
-        for (flag in flags) {
-            Row(
-                Modifier
-                    .background(accent, CircleShape)
-                    .padding(horizontal = 10.dp, vertical = 5.dp),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+/**
+ * The chips themselves, laid out by whichever container the caller chose.
+ *
+ * Not a `@Composable` returning a list — Compose has no equivalent of SwiftUI's `@ViewBuilder`
+ * property, so the shared content becomes a function emitting into the caller's scope.
+ */
+@Composable
+private fun Chips(flags: List<ScoreFlag>, accent: Color, playerName: String?) {
+    if (playerName != null) {
+        Text(
+            playerName.uppercase(),
+            color = accent,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Black,
+            maxLines = 1,
+        )
+    }
+
+    for (flag in flags) {
+        Row(
+            Modifier
+                .background(accent, CircleShape)
+                .padding(horizontal = 10.dp, vertical = 5.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                flag.detail,
+                color = Color.Black.copy(alpha = 0.85f),
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
+            if (flag.points > 0) {
                 Text(
-                    flag.detail,
+                    "+${flag.points}",
                     color = Color.Black.copy(alpha = 0.85f),
                     fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Black,
+                    maxLines = 1,
                 )
-                if (flag.points > 0) {
-                    Text(
-                        "+${flag.points}",
-                        color = Color.Black.copy(alpha = 0.85f),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Black,
-                    )
-                }
             }
         }
+    }
 
-        // Running total of the detected points.
-        if (flags.size > 1) {
-            Text(
-                "= ${flags.totalPoints}",
-                color = Color.Black,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Black,
-                modifier = Modifier
-                    .background(Color.White, CircleShape)
-                    .padding(horizontal = 12.dp, vertical = 5.dp),
-            )
-        }
+    // Running total of the detected points.
+    if (flags.size > 1) {
+        Text(
+            "= ${flags.totalPoints}",
+            color = Color.Black,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Black,
+            modifier = Modifier
+                .background(Color.White, CircleShape)
+                .padding(horizontal = 12.dp, vertical = 5.dp),
+        )
     }
 }
 

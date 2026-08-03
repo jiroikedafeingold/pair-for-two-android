@@ -5,6 +5,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -15,8 +16,14 @@ import androidx.compose.ui.graphics.PathMeasure
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.TextMeasurer
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlin.math.max
 import kotlin.math.min
 
@@ -26,8 +33,8 @@ import kotlin.math.min
  * Each player's colour fills around the oval as they climb toward 121, closing into a complete ring
  * at game point. Subtle by design: it frames the numbers without competing with them.
  *
- * The skunk lines are marked too — 60 (double skunk) and 90 (skunk) — as short ticks laid across
- * the track, so a player can see at a glance how close they are to being skunked.
+ * The skunk lines are marked too — 60 (double skunk) and 90 (skunk) — with literal little skunks
+ * sitting on the track, so a player can see at a glance how close they are to being skunked.
  */
 @Composable
 fun ScoreTrackOverlay(
@@ -43,6 +50,12 @@ fun ScoreTrackOverlay(
     val opponent by animateFloatAsState(opponentFraction ?: 0f, tween(500), label = "oppTrack")
     val long = opponentFraction != null
 
+    // Two skunks at the double-skunk line, one at the skunk line. Laid out once and reused every
+    // frame — measuring text on each draw would be wasteful for two static glyphs.
+    val measurer = rememberTextMeasurer()
+    val doubleSkunk = rememberSkunkGlyphs(measurer, count = 2)
+    val singleSkunk = rememberSkunkGlyphs(measurer, count = 1)
+
     Canvas(modifier) {
         val radiusPx = cornerRadius.toPx()
 
@@ -52,20 +65,43 @@ fun ScoreTrackOverlay(
         }
 
         // The tick at the bottom middle where the loop starts and finishes: the 0 / 121 point.
-        val tickHeight = if (long) 13.dp.toPx() else 8.dp.toPx()
-        val tickWidth = 2.dp.toPx()
+        // Deliberately faint — it marks the seam, it isn't a score in its own right, and at the
+        // old weight it read as a third thing competing with the two loops.
+        val tickHeight = if (long) 10.dp.toPx() else 6.dp.toPx()
+        val tickWidth = 1.5.dp.toPx()
         drawRoundRect(
-            color = Color.White.copy(alpha = 0.5f),
+            color = Color.White.copy(alpha = 0.28f),
             topLeft = Offset(size.width / 2 - tickWidth / 2, size.height - tickHeight),
             size = Size(tickWidth, tickHeight),
             cornerRadius = androidx.compose.ui.geometry.CornerRadius(tickWidth / 2),
         )
 
-        for (fraction in listOf(60f / 121f, 90f / 121f)) {
-            drawSkunkTick(fraction, radiusPx, long)
-        }
+        drawSkunkMark(60f / 121f, radiusPx, doubleSkunk)
+        drawSkunkMark(90f / 121f, radiusPx, singleSkunk)
     }
 }
+
+/** Font size of one skunk on the track. Matches the iOS `SkunkMark.glyphSize`. */
+private val SkunkGlyphSize = 13.sp
+
+/**
+ * [count] skunk glyphs, measured once, overlapping slightly so a pair reads as one mark rather than
+ * two separate ones.
+ *
+ * The overlap is negative letter spacing rather than iOS's negative `HStack` spacing — the same
+ * -0.32 of the glyph size, expressed the way a single laid-out string can express it.
+ */
+@Composable
+private fun rememberSkunkGlyphs(measurer: TextMeasurer, count: Int): TextLayoutResult =
+    remember(measurer, count) {
+        measurer.measure(
+            "🦨".repeat(count),
+            style = TextStyle(
+                fontSize = SkunkGlyphSize,
+                letterSpacing = (SkunkGlyphSize.value * -0.32f).sp,
+            ),
+        )
+    }
 
 /**
  * A faint full-loop track with the filled portion over it, so the remaining distance to 121 stays
@@ -95,28 +131,29 @@ private fun DrawScope.drawScoreLoop(
 }
 
 /**
- * A short line crossing the track at [fraction] of the way round.
+ * [glyphs] centred on the point [fraction] of the way round the track.
  *
- * The point and its tangent come from the same path the loops use, so the mark lines up with the
- * fill. iOS has to approximate this from the bounding boxes of tiny trimmed slices; Compose's
- * `PathMeasure` gives position and tangent directly.
+ * The position comes from the same path the loops use, so the mark sits right on the ring. iOS has
+ * to approximate that point from the bounding box of a tiny trimmed slice; Compose's `PathMeasure`
+ * gives it directly.
+ *
+ * Half-transparent: these are a reference mark on a scoreboard, not decoration to be read first.
  */
-private fun DrawScope.drawSkunkTick(fraction: Float, cornerRadius: Float, long: Boolean) {
+private fun DrawScope.drawSkunkMark(
+    fraction: Float,
+    cornerRadius: Float,
+    glyphs: TextLayoutResult,
+) {
     val path = trackPath(size, cornerRadius, inset = 5.5.dp.toPx())
     val measure = PathMeasure().apply { setPath(path, false) }
-    val distance = measure.length * fraction
-    val point = measure.getPosition(distance)
-    val tangent = measure.getTangent(distance)
-    // Unit normal — perpendicular to the track, so the tick lies across it.
-    val nx = -tangent.y
-    val ny = tangent.x
-    val half = if (long) 5.dp.toPx() else 3.dp.toPx()
-    drawLine(
-        color = Color.White.copy(alpha = 0.28f),
-        start = Offset(point.x - nx * half, point.y - ny * half),
-        end = Offset(point.x + nx * half, point.y + ny * half),
-        strokeWidth = 1.dp.toPx(),
-        cap = StrokeCap.Round,
+    val point = measure.getPosition(measure.length * fraction)
+    drawText(
+        glyphs,
+        topLeft = Offset(
+            point.x - glyphs.size.width / 2f,
+            point.y - glyphs.size.height / 2f,
+        ),
+        alpha = 0.5f,
     )
 }
 

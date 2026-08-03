@@ -75,6 +75,8 @@ android {
 
     buildFeatures {
         compose = true
+        // For the version/build line at the bottom of Settings, matching iOS.
+        buildConfig = true
     }
 }
 

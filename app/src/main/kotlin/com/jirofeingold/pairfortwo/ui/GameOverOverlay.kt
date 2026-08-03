@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
@@ -40,6 +41,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -105,8 +107,12 @@ fun WinnerOverlay(
     skunk: SkunkLevel,
     winnerColor: Color,
     onPlayAgain: () -> Unit,
+    /** Leave the game. Null while there is no menu to leave to — see `GameTableScreen`. */
+    onExit: (() -> Unit)?,
     modifier: Modifier = Modifier,
     celebrationEffects: Boolean = true,
+    /** The other player has disconnected, so a rematch isn't possible — see [GameOverButtons]. */
+    opponentLeft: Boolean = false,
 ) {
     var animateIn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { animateIn = true }
@@ -200,7 +206,7 @@ fun WinnerOverlay(
                 style = tightTextStyle(13.sp, FontWeight.SemiBold),
             )
 
-            PlayAgainButton(onPlayAgain)
+            GameOverButtons(opponentLeft, onPlayAgain, onExit)
         }
     }
 }
@@ -223,7 +229,7 @@ private fun WinnerIcon(skunk: SkunkLevel, tilt: Float) {
             fontSize = 76.sp,
             modifier = Modifier.rotate(tilt * 1.6f),
         )
-        SkunkLevel.DOUBLE -> Row(horizontalArrangement = Arrangement.spacedBy((-18).dp)) {
+        SkunkLevel.DOUBLE -> Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(SKUNK_CHAR, fontSize = 64.sp, modifier = Modifier.rotate(-13f + tilt * 0.8f))
             Text(SKUNK_CHAR, fontSize = 64.sp, modifier = Modifier.rotate(13f - tilt * 0.8f))
         }
@@ -237,8 +243,12 @@ fun LoserOverlay(
     winnerName: String,
     skunk: SkunkLevel,
     onPlayAgain: () -> Unit,
+    /** Leave the game. Null while there is no menu to leave to — see `GameTableScreen`. */
+    onExit: (() -> Unit)?,
     modifier: Modifier = Modifier,
     celebrationEffects: Boolean = true,
+    /** The other player has disconnected, so a rematch isn't possible — see [GameOverButtons]. */
+    opponentLeft: Boolean = false,
 ) {
     var animateIn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { animateIn = true }
@@ -314,13 +324,48 @@ fun LoserOverlay(
                 style = tightTextStyle(13.sp, FontWeight.SemiBold),
             )
 
-            PlayAgainButton(onPlayAgain)
+            GameOverButtons(opponentLeft, onPlayAgain, onExit)
         }
     }
 }
 
+/**
+ * The end-of-game buttons, shared by the winner and loser cards.
+ *
+ * With the opponent gone there is no rematch to offer, so the big gold button becomes the way home
+ * and the quieter "Back to menu" link below it would just be a duplicate — iOS drops it in that case
+ * and so do we.
+ */
 @Composable
-private fun PlayAgainButton(onClick: () -> Unit) {
+private fun GameOverButtons(
+    opponentLeft: Boolean,
+    onPlayAgain: () -> Unit,
+    onExit: (() -> Unit)?,
+) {
+    if (opponentLeft && onExit != null) {
+        PrimaryButton("BACK TO MENU", Icons.Filled.Home, onExit)
+        return
+    }
+    PrimaryButton("PLAY AGAIN", Icons.Filled.Refresh, onPlayAgain)
+    if (onExit != null) {
+        Text(
+            "Back to menu",
+            color = Color.White.copy(alpha = 0.6f),
+            style = tightTextStyle(12.sp, FontWeight.SemiBold),
+            modifier = Modifier
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onExit,
+                )
+                .padding(4.dp),
+        )
+    }
+}
+
+/** The big gold capsule button. */
+@Composable
+private fun PrimaryButton(label: String, icon: ImageVector, onClick: () -> Unit) {
     Row(
         Modifier
             .background(
@@ -338,13 +383,13 @@ private fun PlayAgainButton(onClick: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
-            Icons.Filled.Refresh,
+            icon,
             contentDescription = null,
             tint = Color.Black.copy(alpha = 0.88f),
             modifier = Modifier.size(18.dp),
         )
         Text(
-            "PLAY AGAIN",
+            label,
             color = Color.Black.copy(alpha = 0.88f),
             style = tightTextStyle(15.sp, FontWeight.Black, letterSpacing = 2.2.sp),
         )

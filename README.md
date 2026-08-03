@@ -40,10 +40,18 @@ Both players' panels use the same gesture; the **gear** in the top right opens S
 Settings also carries the scoring mode, the card back, and the sound/haptics/celebration/score-ring
 switches. They persist, and they take effect on the table immediately.
 
+Every phase puts its prompt and its button in a fixed **action rail** down the right-hand side, with
+the scoring flags above them, so the cards always sit centred in the space that's left and the
+button never runs off the bottom. On a tablet (height ≥ 600dp) the rail widens and the cut cards
+shrink, matching what iOS does on iPad.
+
 **The game is landscape only.** The layout is designed for it, exactly as the iOS one is.
 
 Not there yet: the scoring replay, check-my-count, and the rest of the chrome — menu, connect
 screen, help, onboarding. Settings has no name/colour section until the connect screen exists.
+
+The table is level with iOS commit `89adb97`; PLAN.md §6.1 records what that covers and what is
+deliberately still waiting on unported screens.
 
 ## Tests
 

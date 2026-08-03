@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -35,6 +37,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -93,9 +96,16 @@ fun GameTableScreen(
     scoreTrackEnabled: Boolean = true,
     celebrationEffects: Boolean = true,
     onOpenSettings: (() -> Unit)? = null,
+    onExit: (() -> Unit)? = null,
 ) {
     val snapshot by vm.snapshot.collectAsStateWithLifecycle()
     val selected by vm.selectedForDiscard.collectAsStateWithLifecycle()
+    val ended by vm.ended.collectAsStateWithLifecycle()
+    val opponentLeft by vm.opponentLeft.collectAsStateWithLifecycle()
+    var playAgainUnavailable by remember { mutableStateOf(false) }
+
+    // The game was quit — by this player or the other one — so hand back to whoever presented us.
+    LaunchedEffect(ended) { if (ended) onExit?.invoke() }
 
     // Points staged on a panel but not yet claimed, per player — pass-and-play shows a panel each
     // and either can be mid-stage. Continue folds them in, so a last-card or go point can't be
@@ -124,22 +134,37 @@ fun GameTableScreen(
 
         // The same budget the Swift computes. Capping the band stops it leaving a tall dead zone on
         // a tablet; the play area takes whatever is left.
-        val topBandHeight = minOf(height * 0.40f, 200.dp)
+        val topBandHeight = minOf(height * 0.37f, 190.dp)
         // Card budgets still assume the band takes its full cap, so a band that wraps smaller only
         // ever leaves *more* room than the cards were sized for — never less.
         val playHeight = height - topBandHeight
 
-        // The discard shows a full six-card hand and nothing else, so those cards can be large.
-        // Pegging must stack a pile above the hand, so its cards are clamped to the shorter budget.
-        val handWidth = minOf((width - 40.dp) / 7f, (playHeight - 60.dp) / 1.55f)
+        // A tablet, in the sense Android already means by `sw600dp`: in a landscape-locked app the
+        // smallest dimension is the height, so that — not the width — is what separates a tablet
+        // from a phone held sideways. This is the Android reading of the `hSizeClass == .regular`
+        // branches the Swift added; a landscape phone is ~400dp tall and compact on both platforms.
+        val isTablet = height >= 600.dp
+
+        // Every phase reserves a fixed trailing "action rail" for its flags, prompt and button, so
+        // nothing stacks below the cards and the action can never run off the bottom of a short
+        // landscape phone. A tablet gets a far wider rail — at the phone's width it was a thin
+        // ribbon against all that felt.
+        val railWidth = if (isTablet) minOf(width * 0.30f, 420.dp) else 156.dp
+        val playWidth = width - railWidth
+
+        // Card aspect is height = width × 1.45. Each phase's cards fill as much of the play column
+        // as its own layout allows. Discard: a six-card hand. Pegging: a pile above the hand, so
+        // shorter. Show: the cut plus a four-card row.
+        val handWidth = minOf((playWidth - 34.dp) / 7f, (playHeight - 64.dp) / 1.45f)
         val peggingHandWidth = minOf(handWidth, (playHeight - 44.dp) / 2.15f)
         val pileWidth = peggingHandWidth * 0.5f
-        val showWidth = handWidth * 0.66f
-        // Cut-for-deal stacks two card groups vertically — results on top, the tap target below —
-        // so it is sized off the play area rather than the width. The Swift uses 0.24 here; on
-        // Android the labels and the button measure a little taller, and at 0.24 the group overflows
-        // and Compose drops the "Tap to cut" caption entirely. 0.20 leaves it room.
-        val cutWidth = minOf(handWidth * 0.6f, playHeight * 0.18f)
+        // The show row is the cut card + a 16dp gap + a four-card hand at 8dp spacing — five cards
+        // and ~44dp — so dividing by five keeps it inside the play column instead of spilling into
+        // the rail.
+        val showWidth = minOf((playWidth - 44.dp) / 5f, (playHeight - 40.dp) / 1.45f)
+        // The two cut screens hold just two cards, so they'd balloon on a tablet — halve them there.
+        val cutBase = minOf((playWidth - 50.dp) / 2.2f, (playHeight - 76.dp) / 1.45f)
+        val cutWidth = if (isTablet) cutBase * 0.5f else cutBase
 
         val winner = vm.winnerInfo
         // iOS puts the game-over card over an .ultraThinMaterial, which blurs the table rather than
@@ -176,6 +201,8 @@ fun GameTableScreen(
                 selected = selected,
                 uncommitted = uncommitted.values.sum(),
                 commitThenAdvance = commitThenAdvance,
+                isTablet = isTablet,
+                railWidth = railWidth,
                 handWidth = handWidth,
                 peggingHandWidth = peggingHandWidth,
                 pileWidth = pileWidth,
@@ -208,22 +235,74 @@ fun GameTableScreen(
             LaunchedEffect(who, skunk, youWon) {
                 if (youWon) feedback?.playWin(skunk) else feedback?.playLose()
             }
+            // Tapping "Play again" while the other device is unreachable would post an intent into
+            // the void — the view model drops intents while disconnected — and the screen would just
+            // sit there. Say so instead, and head home.
+            val playAgain: () -> Unit = {
+                feedback?.stopCelebration()
+                if (vm.opponentAvailable) vm.playAgain() else playAgainUnavailable = true
+            }
             if (youWon) {
                 WinnerOverlay(
                     winnerName = vm.name(who),
                     skunk = skunk,
                     winnerColor = playerTheme(vm.colorID(who)).primary,
                     celebrationEffects = celebrationEffects,
-                    onPlayAgain = { feedback?.stopCelebration(); vm.playAgain() },
+                    onPlayAgain = playAgain,
+                    onExit = onExit?.let { { vm.quit() } },
+                    opponentLeft = opponentLeft,
                 )
             } else {
                 LoserOverlay(
                     winnerName = vm.name(who),
                     skunk = skunk,
                     celebrationEffects = celebrationEffects,
-                    onPlayAgain = { vm.playAgain() },
+                    onPlayAgain = playAgain,
+                    onExit = onExit?.let { { vm.quit() } },
+                    opponentLeft = opponentLeft,
                 )
             }
+        }
+
+        if (playAgainUnavailable) {
+            PlayAgainUnavailableOverlay(
+                onBack = { if (onExit != null) vm.quit() else playAgainUnavailable = false },
+                canGoHome = onExit != null,
+            )
+        }
+    }
+}
+
+/**
+ * Shown when "Play again" is tapped but the other device isn't reachable.
+ *
+ * iOS returns to the menu on its own after a couple of seconds. Here the button is the way out,
+ * because until the menu is ported there is nowhere to auto-return *to* — with no exit available it
+ * dismisses back to the win screen so the player isn't trapped behind a scrim.
+ */
+@Composable
+private fun PlayAgainUnavailableOverlay(onBack: () -> Unit, canGoHome: Boolean) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.65f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .widthIn(max = 360.dp)
+                .padding(28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text("Opponent unavailable", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "The other player isn't available for another game.",
+                color = Color.White.copy(alpha = 0.8f),
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center,
+            )
+            GoldButton(if (canGoHome) "Back to menu" else "OK", onBack)
         }
     }
 }
@@ -271,7 +350,7 @@ private fun TopBand(
     Column(
         modifier.padding(top = 12.dp, bottom = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
             vm.coachBanner,
@@ -285,13 +364,9 @@ private fun TopBand(
                 .padding(horizontal = 44.dp),
         )
 
-        val scoringPlayer = vm.scoringPlayer
-        ScoreFlagsView(
-            flags = s.flags,
-            accent = scoringPlayer?.let { playerTheme(vm.colorID(it)).primary } ?: CribGold,
-            playerName = scoringPlayer?.let { vm.name(it) },
-            modifier = Modifier.padding(horizontal = 16.dp),
-        )
+        // The scoring flags ("Fifteen 2 +2" …) used to sit here. They live in the play area's action
+        // rail now, so this dark band holds only the coach line and the scoreboard — which is what
+        // gives the scores room to be read across a table.
 
         if (s.scoringMode == ScoringMode.AUTO) {
             // Automatic scoring has no manual controls — just names and scores.
@@ -346,16 +421,27 @@ private fun TopBand(
 private fun AutoScoreboard(vm: GameViewModel, s: PlayerSnapshot) {
     Row(
         Modifier
-            .widthIn(max = 700.dp)
-            .padding(horizontal = 34.dp, vertical = 8.dp),
+            .widthIn(max = 760.dp)
+            .padding(horizontal = 34.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ScoreColumn(vm, s.you, Modifier.weight(1f))
+        // A soft-capped bar down the middle, distinctly heavier than the thin progress ring around
+        // the pair — at a hairline it read as a third track rather than as a separator.
         Box(
             Modifier
-                .width(1.dp)
-                .height(36.dp)
-                .background(Color.White.copy(alpha = 0.15f)),
+                .width(2.5.dp)
+                .height(58.dp)
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.White.copy(alpha = 0.06f),
+                            Color.White.copy(alpha = 0.45f),
+                            Color.White.copy(alpha = 0.06f),
+                        ),
+                    ),
+                    CircleShape,
+                ),
         )
         ScoreColumn(vm, s.you.opponent, Modifier.weight(1f))
     }
@@ -364,18 +450,24 @@ private fun AutoScoreboard(vm: GameViewModel, s: PlayerSnapshot) {
 @Composable
 private fun ScoreColumn(vm: GameViewModel, player: PlayerID, modifier: Modifier = Modifier) {
     val theme = playerTheme(vm.colorID(player))
-    Column(modifier, horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(
+        // Horizontal padding keeps the names and scores clear of the divider and of the ends of the
+        // oval the progress ring traces around them.
+        modifier.padding(horizontal = 10.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
         Text(
             vm.name(player).uppercase(),
             color = theme.primary,
             maxLines = 1,
-            style = tightTextStyle(14.sp, FontWeight.Black),
+            style = tightTextStyle(18.sp, FontWeight.Black),
         )
         Text(
             "${vm.score(player)}",
             color = Color.White,
             maxLines = 1,
-            style = tightTextStyle(40.sp, FontWeight.Black),
+            style = tightTextStyle(44.sp, FontWeight.Black),
         )
     }
 }
@@ -389,6 +481,8 @@ private fun BottomBand(
     selected: Set<com.jirofeingold.pairfortwo.core.Card>,
     uncommitted: Int,
     commitThenAdvance: () -> Unit,
+    isTablet: Boolean,
+    railWidth: Dp,
     handWidth: Dp,
     peggingHandWidth: Dp,
     pileWidth: Dp,
@@ -398,14 +492,16 @@ private fun BottomBand(
 ) {
     Box(modifier, contentAlignment = Alignment.Center) {
         when (s.phase) {
-            GamePhase.CUT_FOR_DEAL -> CutForDealArea(vm, s, cutWidth)
-            GamePhase.DISCARD_TO_CRIB -> DiscardArea(vm, s, selected, handWidth)
-            GamePhase.CUT_STARTER -> StarterCutArea(vm, s, cutWidth)
+            GamePhase.CUT_FOR_DEAL -> CutForDealArea(vm, s, cutWidth, railWidth)
+            GamePhase.DISCARD_TO_CRIB -> DiscardArea(vm, s, selected, handWidth, railWidth)
+            GamePhase.CUT_STARTER -> StarterCutArea(vm, s, cutWidth, railWidth)
             GamePhase.PEGGING ->
-                PeggingArea(vm, s, peggingHandWidth, pileWidth, uncommitted, commitThenAdvance)
+                PeggingArea(
+                    vm, s, peggingHandWidth, pileWidth, railWidth, uncommitted, commitThenAdvance, isTablet,
+                )
             GamePhase.SHOW_PONE, GamePhase.SHOW_DEALER, GamePhase.SHOW_CRIB ->
-                ShowArea(vm, s, showWidth, uncommitted, commitThenAdvance)
-            GamePhase.HAND_COMPLETE -> HandCompleteArea(vm, s)
+                ShowArea(vm, s, showWidth, railWidth, uncommitted, commitThenAdvance)
+            GamePhase.HAND_COMPLETE -> HandCompleteArea(vm, s, railWidth)
             GamePhase.GAME_OVER -> Spacer(Modifier.fillMaxSize())   // the overlay covers this
             else -> Spacer(Modifier.fillMaxSize())
         }
@@ -413,21 +509,105 @@ private fun BottomBand(
 }
 
 /**
+ * One consistent landscape layout for every phase of play — port of the iOS `playScene`.
+ *
+ * The cards fill and centre whatever space is left, while the phase's prompt, status and primary
+ * button sit in a fixed-width column on the trailing side, in the same place on every screen.
+ * Nothing stacks below the cards, so the action can never run off the bottom of a short landscape
+ * phone — which is what the old vertically-stacked layout kept doing as soon as a hand grew.
+ *
+ * The rail's width is **always** reserved, whether or not it currently holds anything, so the cards
+ * keep a fixed centred position and don't jump the moment a "Go" button or a wait message appears.
+ */
+@Composable
+private fun PlayScene(
+    vm: GameViewModel,
+    s: PlayerSnapshot,
+    railWidth: Dp,
+    play: @Composable () -> Unit,
+    action: @Composable ColumnScope.() -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxSize()
+            .padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Box(
+            Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+            contentAlignment = Alignment.Center,
+        ) { play() }
+
+        Column(
+            Modifier
+                .width(railWidth)
+                .fillMaxHeight(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            // The flag band is always reserved, flags or not, so the prompt and button below it sit
+            // in the same place all game and never jump as scoring feedback appears.
+            //
+            // iOS instead floats the flags over a rail-centred button, which keeps the button level
+            // with the cards. That doesn't survive the move to Android: the same chips and prompts
+            // measure taller here, and on the show screen the flag column landed straight on top of
+            // "Count it on your slider, then Continue". Reserving the band costs a little vertical
+            // alignment with the cards and buys back legibility.
+            Box(Modifier.height(FLAG_BAND_HEIGHT)) {
+                RailFlags(vm, s, Modifier.align(Alignment.TopCenter))
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
+                content = action,
+            )
+        }
+    }
+}
+
+/** The rail's reserved height for scoring flags — iOS's 96pt cap on the same column. */
+private val FLAG_BAND_HEIGHT = 96.dp
+
+/**
+ * The scoring flags for the current context, as a column pinned to the top of the rail.
+ *
+ * Height-capped and scrollable: a big hand's list of fifteens and runs is easily a dozen chips, and
+ * left to itself it would run the length of the screen.
+ */
+@Composable
+private fun RailFlags(vm: GameViewModel, s: PlayerSnapshot, modifier: Modifier = Modifier) {
+    if (s.flags.isEmpty()) return
+    val scoringPlayer = vm.scoringPlayer
+    ScoreFlagsView(
+        flags = s.flags,
+        accent = scoringPlayer?.let { playerTheme(vm.colorID(it)).primary } ?: CribGold,
+        playerName = scoringPlayer?.let { vm.name(it) },
+        vertical = true,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(max = FLAG_BAND_HEIGHT),
+    )
+}
+
+/**
  * Each player cuts once and their card is shown to both. Once both have cut, the lower card wins the
  * deal and the first crib; the dealer then taps Deal.
  */
 @Composable
-private fun CutForDealArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp) {
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceEvenly,
+private fun CutForDealArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp, railWidth: Dp) {
+    PlayScene(
+        vm, s, railWidth,
+        play = {
+            Row(horizontalArrangement = Arrangement.spacedBy(34.dp)) {
+                CutResult(vm, s, PlayerID.ONE, width)
+                CutResult(vm, s, PlayerID.TWO, width)
+            }
+        },
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(34.dp)) {
-            CutResult(vm, s, PlayerID.ONE, width)
-            CutResult(vm, s, PlayerID.TWO, width)
-        }
-
         when {
             vm.cutForDealDecided ->
                 if (vm.youDeal) GoldButton("Deal") { vm.advance() }
@@ -438,7 +618,12 @@ private fun CutForDealArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp) {
                 modifier = Modifier.tappable { vm.cut() },
             ) {
                 CardView(null, faceUp = false, width = width * 0.85f)
-                Text("Tap to cut", color = Color.White, style = tightTextStyle(15.sp, FontWeight.SemiBold))
+                Text(
+                    "Tap to cut",
+                    color = Color.White,
+                    textAlign = TextAlign.Center,
+                    style = tightTextStyle(15.sp, FontWeight.SemiBold),
+                )
             }
             else -> WaitingLabel("Waiting for ${s.opponentName} to cut…")
         }
@@ -483,20 +668,21 @@ private fun DiscardArea(
     s: PlayerSnapshot,
     selected: Set<com.jirofeingold.pairfortwo.core.Card>,
     width: Dp,
+    railWidth: Dp,
 ) {
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceEvenly,
+    PlayScene(
+        vm, s, railWidth,
+        play = {
+            HandView(
+                cards = s.yourHand.sortedForDisplay(),
+                selected = selected,
+                onTap = { vm.toggleDiscard(it) },
+                cardWidth = width,
+                // Deal the cards in on a fresh hand.
+                dealSignal = s.yourHand.map { it.id },
+            )
+        },
     ) {
-        HandView(
-            cards = s.yourHand.sortedForDisplay(),
-            selected = selected,
-            onTap = { vm.toggleDiscard(it) },
-            cardWidth = width,
-            // Deal the cards in on a fresh hand.
-            dealSignal = s.yourHand.map { it.id },
-        )
         val whose = if (s.yourSeat == Seat.DEALER) "your crib" else "${vm.name(s.dealer)}'s crib"
         Button(
             onClick = { vm.confirmDiscard() },
@@ -506,44 +692,47 @@ private fun DiscardArea(
                 contentColor = Color.White,
             ),
         ) {
-            Text("Send 2 to $whose")
+            Text("Send 2 to $whose", textAlign = TextAlign.Center)
         }
     }
 }
 
 /** The pone lifts the deck, then the dealer turns up the cut — like an in-person cut. */
 @Composable
-private fun StarterCutArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp) {
+private fun StarterCutArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp, railWidth: Dp) {
     val lifted = vm.starterCutLifted
     val canTap = vm.youLiftCut || vm.youRevealStarter
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceEvenly,
+    PlayScene(
+        vm, s, railWidth,
+        play = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(if (lifted) 30.dp else 0.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                DeckPile(
+                    width, highlighted = canTap,
+                    modifier = Modifier.tappable(enabled = canTap) {
+                        if (vm.youLiftCut) vm.liftCut() else if (vm.youRevealStarter) vm.revealStarter()
+                    },
+                )
+                // The portion the pone lifted off, set aside once the cut is made.
+                if (lifted) DeckPile(width, highlighted = false, modifier = Modifier.alpha(0.8f))
+            }
+        },
     ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(if (lifted) 30.dp else 0.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            DeckPile(
-                width, highlighted = canTap,
-                modifier = Modifier.tappable(enabled = canTap) {
-                    if (vm.youLiftCut) vm.liftCut() else if (vm.youRevealStarter) vm.revealStarter()
-                },
-            )
-            // The portion the pone lifted off, set aside once the cut is made.
-            if (lifted) DeckPile(width, highlighted = false, modifier = Modifier.alpha(0.8f))
-        }
-
-        // The instruction sits under the deck — the deck itself is the tap target.
+        // The instruction is in the rail; the deck itself is still the tap target.
         when {
             vm.youLiftCut -> Text(
                 "Tap the deck to cut",
-                color = Color.White, style = tightTextStyle(15.sp, FontWeight.SemiBold),
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                style = tightTextStyle(15.sp, FontWeight.SemiBold),
             )
             vm.youRevealStarter -> Text(
                 "Tap the deck to turn up the cut",
-                color = Color.White, style = tightTextStyle(15.sp, FontWeight.SemiBold),
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                style = tightTextStyle(15.sp, FontWeight.SemiBold),
             )
             else -> WaitingLabel(
                 if (lifted) "Waiting for ${vm.name(s.dealer)} to turn up the cut…"
@@ -575,18 +764,45 @@ private fun PeggingArea(
     s: PlayerSnapshot,
     handWidth: Dp,
     pileWidth: Dp,
+    railWidth: Dp,
     uncommitted: Int,
     commitThenAdvance: () -> Unit,
+    isTablet: Boolean,
 ) {
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
-            PlayPileView(s, colorIDFor = { vm.colorID(it) }, cardWidth = pileWidth)
-        }
+    PlayScene(
+        vm, s, railWidth,
+        play = {
+            Column(
+                Modifier.fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                // On a tablet, drop the pile down from the very top of the play area — this spacer
+                // balances the two below it, so the hand still sits centred between the pile and the
+                // bottom. A phone keeps the pile at the top, where the height is tight.
+                if (isTablet) Spacer(Modifier.weight(1f))
 
+                // The running count lives inside the pile, which frees this space for bigger cards.
+                PlayPileView(s, colorIDFor = { vm.colorID(it) }, cardWidth = pileWidth)
+
+                // Your hand is centred in the space between the pile and the bottom rather than
+                // pinned to the bottom. The slot keeps its height even when the hand is empty, so
+                // nothing shifts as you play your last card — right up until the count.
+                Spacer(Modifier.weight(1f))
+                Box(Modifier.height(handWidth * 1.45f), contentAlignment = Alignment.Center) {
+                    if (!vm.peggingComplete && s.yourHand.isNotEmpty()) {
+                        HandView(
+                            cards = s.yourHand.sortedForDisplay(),
+                            isEnabled = { vm.isLegalPlay(it) },
+                            onTap = { vm.play(it) },
+                            cardWidth = handWidth,
+                        )
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+            }
+        },
+    ) {
         if (vm.peggingComplete) {
             if (vm.youStartCount) {
                 // Folding in a staged amount here matters: last-card, go and 31 points are claimed
@@ -598,27 +814,14 @@ private fun PeggingArea(
             } else {
                 WaitingLabel("Waiting for ${vm.name(s.lastToPlay ?: s.you)}…")
             }
-        } else {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                HandView(
-                    cards = s.yourHand.sortedForDisplay(),
-                    isEnabled = { vm.isLegalPlay(it) },
-                    onTap = { vm.play(it) },
-                    cardWidth = handWidth,
-                )
-                if (vm.canSayGo) {
-                    Button(
-                        onClick = { vm.sayGo() },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFFE08A2E),
-                            contentColor = Color.Black,
-                        ),
-                    ) { Text("Go") }
-                }
-            }
+        } else if (vm.canSayGo) {
+            Button(
+                onClick = { vm.sayGo() },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color(0xFFE08A2E),
+                    contentColor = Color.Black,
+                ),
+            ) { Text("Go") }
         }
     }
 }
@@ -628,63 +831,67 @@ private fun ShowArea(
     vm: GameViewModel,
     s: PlayerSnapshot,
     pileWidth: Dp,
+    railWidth: Dp,
     uncommitted: Int,
     commitThenAdvance: () -> Unit,
 ) {
     val isCrib = s.phase == GamePhase.SHOW_CRIB
-    // The crib adds a badge, so shrink its cards a touch to keep the group and the button on screen.
-    val cardW = if (isCrib) pileWidth * 0.8f else pileWidth
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceEvenly,
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(24.dp),
-            verticalAlignment = Alignment.Top,
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+    // The crib adds a badge and a backing, so shrink its cards a hair — no more than that, now the
+    // button lives in the rail rather than below the cards.
+    val cardW = if (isCrib) pileWidth * 0.92f else pileWidth
+    PlayScene(
+        vm, s, railWidth,
+        play = {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Text("The Cut", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
-                s.starter?.let { CardView(it, width = cardW) }
-            }
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                if (isCrib) {
-                    // A distinct gold badge, so it is obvious the crib is being counted rather
-                    // than another hand.
-                    Text(
-                        "${vm.name(s.dealer)}'s crib".uppercase(),
-                        color = Color.Black,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Black,
-                        modifier = Modifier
-                            .background(CribGold, androidx.compose.foundation.shape.CircleShape)
-                            .padding(horizontal = 10.dp, vertical = 3.dp),
-                    )
-                } else {
-                    Text(vm.showLabel, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text("The Cut", color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                    // A full card here, not the pegging pile's rank+suit tile: this one is being
+                    // counted into a hand, so it should look like the cards beside it.
+                    s.starter?.let { CardView(it, width = cardW) }
                 }
-                HandView(
-                    cards = vm.showCards.sortedForDisplay(),
-                    onTap = {},
-                    cardWidth = cardW,
-                    // Re-deals on each show sub-phase, as the Swift does.
-                    dealSignal = s.phase,
-                )
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    if (isCrib) {
+                        // A distinct gold badge, so it is obvious the crib is being counted rather
+                        // than another hand.
+                        Text(
+                            "${vm.name(s.dealer)}'s crib".uppercase(),
+                            color = Color.Black,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Black,
+                            modifier = Modifier
+                                .background(CribGold, CircleShape)
+                                .padding(horizontal = 10.dp, vertical = 3.dp),
+                        )
+                    } else {
+                        Text(vm.showLabel, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
+                    }
+                    HandView(
+                        cards = vm.showCards.sortedForDisplay(),
+                        onTap = {},
+                        cardWidth = cardW,
+                        // Re-deals on each show sub-phase, as the Swift does.
+                        dealSignal = s.phase,
+                    )
+                }
             }
-        }
-
+        },
+    ) {
         if (vm.youAreCounting) {
             Text(
                 if (s.scoringMode == ScoringMode.AUTO) "Scored automatically"
                 else "Count it on your slider, then Continue",
                 color = Color.White.copy(alpha = 0.7f),
                 fontSize = 12.sp,
+                textAlign = TextAlign.Center,
             )
             GoldButton(if (uncommitted > 0) "Add $uncommitted & continue" else "Continue", commitThenAdvance)
         } else {
@@ -694,18 +901,26 @@ private fun ShowArea(
 }
 
 @Composable
-private fun HandCompleteArea(vm: GameViewModel, s: PlayerSnapshot) {
-    Column(
-        Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.SpaceEvenly,
+private fun HandCompleteArea(vm: GameViewModel, s: PlayerSnapshot, railWidth: Dp) {
+    PlayScene(
+        vm, s, railWidth,
+        play = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                // Bigger than it was: with the play area to itself this is the whole screen's
+                // content, and at the old size it read as a caption.
+                Text("Hand complete", color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "${s.yourName} ${s.yourScore}  •  ${s.opponentName} ${s.opponentScore}",
+                    color = Color.White.copy(alpha = 0.85f),
+                    fontSize = 20.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        },
     ) {
-        Text("Hand complete", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        Text(
-            "${s.yourName} ${s.yourScore}  •  ${s.opponentName} ${s.opponentScore}",
-            color = Color.White.copy(alpha = 0.85f),
-            fontSize = 17.sp,
-        )
         // The deal passes to the former pone, so only they start the next hand.
         if (vm.youStartNextDeal) {
             GoldButton("Deal next hand") { vm.advance() }
@@ -728,19 +943,25 @@ private fun GoldButton(label: String, onClick: () -> Unit) {
     }
 }
 
+/** A spinner over its text, so it sits comfortably in the narrow action rail. */
 @Composable
 private fun WaitingLabel(text: String) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.wrapContentHeight(),
     ) {
         CircularProgressIndicator(
             color = Color.White,
             strokeWidth = 2.dp,
-            modifier = Modifier.size(16.dp),
+            modifier = Modifier.size(20.dp),
         )
-        Text(text, color = Color.White.copy(alpha = 0.8f), fontSize = 15.sp)
+        Text(
+            text,
+            color = Color.White.copy(alpha = 0.8f),
+            fontSize = 15.sp,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

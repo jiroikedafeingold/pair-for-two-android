@@ -63,7 +63,15 @@ private fun CutStack(snapshot: PlayerSnapshot, cardWidth: Dp) {
         verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Caption("The Cut")
-        CardView(snapshot.starter, faceUp = snapshot.starter != null, width = cardWidth)
+        // A rank+suit tile once it's turned up: this card sits on its own at half the hand's width,
+        // and a full pip card at that size reads as a cream rectangle. Face-down it's a real card,
+        // since the back art is the whole point of it.
+        val starter = snapshot.starter
+        if (starter != null) {
+            RankSuitTile(starter, width = cardWidth)
+        } else {
+            CardView(null, faceUp = false, width = cardWidth)
+        }
     }
 }
 
@@ -130,7 +138,14 @@ private fun EmptyPlayArea(cardWidth: Dp) {
     }
 }
 
-/** A run of played cards as an overlapping fan, each with a colour bar showing who played it. */
+/**
+ * A run of played cards as simplified rank+suit tiles, lightly overlapped so every rank stays
+ * visible, each with a colour bar showing who played it.
+ *
+ * The overlap is far shallower than a hand's fan (0.28 of a card against 0.55): the point of this
+ * row is that both players can read the sequence and add it up, so hiding half of each card to save
+ * width defeats it.
+ */
 @Composable
 private fun LaneRow(
     cards: List<com.jirofeingold.pairfortwo.core.PlayedCard>,
@@ -138,10 +153,14 @@ private fun LaneRow(
     colorIDFor: (com.jirofeingold.pairfortwo.core.PlayerID) -> Int,
     cardWidth: Dp,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(-cardWidth * 0.55f)) {
+    Row(horizontalArrangement = Arrangement.spacedBy(-cardWidth * 0.28f)) {
         for (played in cards) {
-            Box {
-                CardView(
+            // Width-constrained on purpose: the owner's colour bar below asks to fill its parent, and
+            // an unconstrained Box would hand it the whole remaining row — which stretched the bar
+            // across the table, squeezed the crib stack to a one-letter-per-line column, and through
+            // that squashed the hand underneath.
+            Box(Modifier.width(cardWidth)) {
+                RankSuitTile(
                     played.card,
                     isHighlighted = played == snapshot.playSequence.lastOrNull(),
                     width = cardWidth,

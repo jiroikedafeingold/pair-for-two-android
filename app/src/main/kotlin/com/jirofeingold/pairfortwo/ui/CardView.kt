@@ -229,6 +229,73 @@ private fun CardBackContent(cardBackID: Int, width: Dp, height: Dp, shape: Round
     }
 }
 
+// ---- Rank + suit tile ----
+
+/**
+ * A compact, high-legibility stand-in for a card — port of the iOS `RankSuitTile`.
+ *
+ * A big rank over a suit glyph on a clean cream tile, rather than a full pip card, so it reads at a
+ * glance even when small. Used for the standalone "The Cut" card during pegging and for the played
+ * cards in the pegging pile, which are drawn at half the hand's width and were becoming a row of
+ * indistinguishable cream rectangles as full cards.
+ *
+ * The tile is slightly squarer than a card ([width] × 1.34, against a card's 1.45), which is what
+ * lets the ranks stay large at the pile's size.
+ */
+@Composable
+fun RankSuitTile(
+    card: Card,
+    modifier: Modifier = Modifier,
+    width: Dp = 74.dp,
+    /** Brighter, thicker rim for the most recent play — matches [CardView]'s highlight. */
+    isHighlighted: Boolean = false,
+) {
+    val ink = if (card.suit.isRed) CardRed else CardInk
+    val shape = RoundedCornerShape(width * 0.15f)
+    val rankSize = width.value * 0.72f
+
+    Box(
+        modifier
+            .size(width = width, height = width * 1.34f)
+            .shadow(elevation = width * 0.05f, shape = shape, clip = false)
+            .clip(shape)
+            .background(CardFace)
+            .semantics { contentDescription = card.accessibleName },
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            // The Swift's negative spacing, pulling the suit up under the rank's baseline.
+            verticalArrangement = Arrangement.spacedBy(-width * 0.06f),
+            modifier = Modifier.padding(vertical = width * 0.08f),
+        ) {
+            Text(
+                card.rank.label,
+                color = ink,
+                maxLines = 1,
+                // Tight, for the same reason CornerIndex is: Compose's default line box would add
+                // most of a rank's height again in padding and push the suit glyph off the tile.
+                style = tightTextStyle(rankSize.sp, FontWeight.Black),
+            )
+            SuitSymbol(
+                suit = card.suit,
+                color = ink,
+                size = width * (0.5f * SuitGlyph.EM_RATIO),
+            )
+        }
+
+        Box(
+            Modifier
+                .fillMaxSize()
+                .border(
+                    width = if (isHighlighted) 2.4.dp else 1.2.dp,
+                    color = CribGold.copy(alpha = if (isHighlighted) 1f else 0.7f),
+                    shape = shape,
+                ),
+        )
+    }
+}
+
 // ---- Previews ----
 
 @Preview(name = "Cards on felt", showBackground = true, backgroundColor = 0xFF0D211A)
@@ -246,6 +313,21 @@ private fun CardViewPreview() {
         CardView(Card(Rank.TEN, Suit.DIAMONDS), isHighlighted = true)
         CardView(Card(Rank.ACE, Suit.SPADES), isDimmed = true)
         CardView(null, faceUp = false)
+    }
+}
+
+@Preview(name = "Rank+suit tiles", showBackground = true, backgroundColor = 0xFF0D211A)
+@Composable
+private fun RankSuitTilePreview() {
+    Row(
+        Modifier
+            .background(FeltDark)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        RankSuitTile(Card(Rank.TEN, Suit.DIAMONDS))
+        RankSuitTile(Card(Rank.KING, Suit.SPADES), width = 46.dp)
+        RankSuitTile(Card(Rank.ACE, Suit.HEARTS), width = 46.dp, isHighlighted = true)
     }
 }
 

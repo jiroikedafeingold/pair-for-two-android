@@ -33,9 +33,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.jirofeingold.pairfortwo.BuildConfig
+import com.jirofeingold.pairfortwo.R
 import com.jirofeingold.pairfortwo.core.ScoringMode
 import com.jirofeingold.pairfortwo.settings.AppSettings
 import com.jirofeingold.pairfortwo.ui.theme.CribGold
@@ -153,6 +157,18 @@ fun SettingsScreen(
                     "in-game sounds. Celebration effects are the fireworks and flash on the win " +
                     "screen (the win screen itself still shows). Score progress rings trace " +
                     "each player's colour around the scores, closing the loop at 121.",
+            )
+
+            // The version, as iOS shows it — the thing you ask a player for when they report a bug.
+            Text(
+                "${stringResource(R.string.app_name)} ${BuildConfig.VERSION_NAME} " +
+                    "(build ${BuildConfig.VERSION_CODE})",
+                color = Color.White.copy(alpha = 0.4f),
+                style = MaterialTheme.typography.bodySmall,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 20.dp),
             )
         }
     }

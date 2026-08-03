@@ -494,6 +494,14 @@ class GameViewModel private constructor(
     /** True when this device may act; pass-and-play is always "connected". */
     val canActNow: Boolean get() = _connection.value == ConnectionState.CONNECTED
 
+    /**
+     * The other player is reachable right now, so a networked command will actually be delivered.
+     * Mirrors the guard in [submit], which silently drops intents while disconnected — "Play again"
+     * needs to know that in advance so it can say so rather than appear to do nothing.
+     */
+    val opponentAvailable: Boolean
+        get() = isLoopback || _connection.value == ConnectionState.CONNECTED
+
     // ---- The show (counting) ----
 
     /** Who is counting now: pone, then dealer, then the dealer's crib. Null outside the show. */
@@ -690,7 +698,11 @@ class GameViewModel private constructor(
 
     /** A live scoring-mode change from Settings. Either device may set it; it governs both. */
     fun setScoringMode(mode: ScoringMode) {
-        if (mode == scoringMode) return
+        // Compared against the *game's* mode, not this device's [scoringMode] field: a guest seeds
+        // that field from its own stored setting, so guarding on it would wrongly no-op whenever the
+        // guest tries to change a game the host started in a different mode — the guest's flags then
+        // stayed on after it switched to player responsibility.
+        if (mode == _snapshot.value.scoringMode) return
         scoringMode = mode
         submit(GameMessage.SetScoringMode(mode.value))
     }

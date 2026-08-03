@@ -344,9 +344,9 @@ chrome around it should feel native.**
 
 | iOS | Android | Treatment |
 | --- | --- | --- |
-| `GameTableView` (1119) | `GameTableScreen.kt` | **First cut done** — every phase of a hand plays through on a device. Proportional layout via `BoxWithConstraints`, from the same ratios the Swift's `GeometryReader` computes. One deliberate structural change: the top band **wraps to a cap** rather than being pinned and clipped, because Android text measures taller and the scoreboard's digits were being sliced off whenever the flag chips appeared. |
-| `CardView` (121) | `CardView.kt` | **Done.** Suit symbols are *drawn paths*, not the ♠♥♦♣ characters: Android maps those to whichever font the vendor chose, the metrics differ sharply from SF's, and some devices render them as colour emoji. The first device screenshot showed glyphs thick enough to collide with the centre pip. |
-| `ScorePanel` (494) | `ScorePanel.kt` | **Done.** Custom track shapes, `PointsSlider` and the skunk ticks, all on `Canvas`. Compose's `PathMeasure` gives position and tangent directly, so the skunk marks don't need iOS's trick of approximating them from the bounding boxes of tiny trimmed slices. |
+| `GameTableView` (1119) | `GameTableScreen.kt` | **Done, and level with iOS `89adb97`** (see §6.1). Every phase plays through on a device. Proportional layout via `BoxWithConstraints`, from the same ratios the Swift's `GeometryReader` computes. Two deliberate structural changes: the top band **wraps to a cap** rather than being pinned and clipped, because Android text measures taller and the scoreboard's digits were sliced off whenever the flag chips appeared; and the action rail **reserves a flag band** above its button instead of floating the flags over a rail-centred button (§6.1). |
+| `CardView` (121) | `CardView.kt` | **Done**, including `RankSuitTile`. Suit symbols are *drawn paths*, not the ♠♥♦♣ characters: Android maps those to whichever font the vendor chose, the metrics differ sharply from SF's, and some devices render them as colour emoji. The first device screenshot showed glyphs thick enough to collide with the centre pip. |
+| `ScorePanel` (494) | `ScorePanel.kt` | **Done.** Custom track shapes, `PointsSlider` and the skunk marks, all on `Canvas`. Compose's `PathMeasure` gives the position on the track directly, so the marks don't need iOS's trick of approximating it from the bounding box of a tiny trimmed slice. |
 | `WinnerOverlay` (405) | `GameOverOverlay.kt` | **Done.** Fireworks and confetti are `Canvas` particle systems on a single frame clock, rather than 120 individual animations. `.ultraThinMaterial` has no Compose equivalent, so the table itself is blurred behind the card — a no-op below API 31, where the scrim alone still reads. |
 | `LoserOverlay`, `ScoreFlagsView`, `PlayPileView`, `HandView` | direct ports | **Done.** `LoserOverlay` only appears on a networked loser's device, so it is so far untested on screen. |
 | `ScoringReplayView` | `ScoringReplay.kt` | Not yet ported. |
@@ -375,6 +375,54 @@ Android specifics to get right:
   orientation restriction *ignored* on large screens (smallest width ≥ 600dp), so a tablet may
   still present portrait despite the lock. Worth confirming on real hardware.
 - `core-splashscreen` for the existing splash art.
+
+### 6.1 Keeping up with iOS
+
+The iOS app does not stand still while this port is built, so the Android side records **which iOS
+commit it is level with** rather than pretending the two were written at once.
+
+**Level with iOS `89adb97` (2 August 2026).** iOS shipped 1.5 and then reworked the table across
+21 commits; all of the portable ones are in. What changed here:
+
+- **An action rail on every play phase.** The cards fill and centre the play column; the prompt,
+  status and primary button live in a fixed-width trailing column (156dp, or 30% up to 420dp on a
+  tablet). Nothing stacks below the cards any more, which is what kept pushing the button off the
+  bottom of a short landscape phone. `hSizeClass == .regular` reads on Android as **height ≥ 600dp**
+  — in a landscape-locked app the height *is* the smallest width, so that matches `sw600dp` and
+  classifies a landscape phone as compact, exactly as iOS does.
+- **Scoring flags moved from the top band into the rail**, as a vertical chip column, which gives
+  the scoreboard back its height.
+- **`RankSuitTile`** — a compact rank-over-suit tile for the standalone "The Cut" card and the
+  played pegging cards, with the overlap loosened from 0.55 to 0.28 of a card so every rank stays
+  readable. Full pip cards return for the show, where the cut is counted into a hand.
+- **The pegging hand keeps a reserved slot**, so the layout doesn't shift as the last card is
+  played; the pile drops down from the top on a tablet.
+- **Skunk marks** (two 🦨 at 60, one at 90) replace the radial ticks; the start tick is fainter.
+- **Roomier auto-mode scores** and a clear capsule divider between them.
+- **Play Again checks the opponent is reachable first**, via the new `GameViewModel.opponentAvailable`
+  — the view model drops intents while disconnected, so the tap would otherwise do nothing at all.
+- **`setScoringMode` compares against the game's mode, not the device's**, fixing a guest whose
+  flags kept showing after it switched to player responsibility.
+- The win/lose overlays gained a way home, and swap their primary button for "Back to menu" when a
+  rematch is impossible.
+
+**One deliberate divergence.** iOS floats the flag column over a rail-centred button. The same chips
+and prompts measure taller on Android, and on the show screen the flags landed on top of "Count it on
+your slider, then Continue". Android reserves a fixed 96dp flag band and centres the action *below*
+it — the button sits a little lower than the cards' centre, but it can never be covered, and it
+still doesn't move when flags appear. **The iOS side is worth the same treatment**, alongside the
+`confirmRelease` fix noted in §7.
+
+**Deferred, because they belong to unported screens:**
+
+- `GameFeedback.playScoreTick(points:)` — the scaled replay tick. It has no caller until
+  `ScoringReplay` is ported, and this project's rule is not to add a setting or an effect that
+  nothing reads.
+- The pre-win replay's watchdog, auto-advance and `preWinReplayShown` gating in `GameTableView`.
+- The `Check` capsule in the show rail, which waits on the check-my-count overlay.
+- iOS's `MultipeerSession` pairing-retry change is already the behaviour `LanTransport` shipped
+  with — a reconnecting guest re-browses and re-invites on a timer (`rebrowseIntervalMs`). Nothing
+  to port.
 
 ---
 
@@ -445,7 +493,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table, overlays and Settings done; connect/menu/help/onboarding and `ScoringReplay` remain |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table (level with iOS `89adb97`, §6.1), overlays and Settings done; connect/menu/help/onboarding and `ScoringReplay` remain |
 | **7** | Persistence, resume, lifecycle | medium | settings done (§7); saved game and resume remain |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |
