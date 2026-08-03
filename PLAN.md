@@ -352,8 +352,8 @@ chrome around it should feel native.**
 | `ScoringReplayView` | `ScoringReplay.kt` | Not yet ported. |
 | `SettingsView` | `SettingsScreen.kt` | **Done, minus the settings with nothing to act on yet** (name/colour, scoring replay). **Android-native:** Material 3 `ListItem` + `Switch`, back arrow. A small `TopAppBar`, not the `LargeTopAppBar` sketched here — the game is landscape-locked and a large bar spends a third of the height on its own title. Reached from a gear control on the table, as on iOS. |
 | `HelpView`, `OnboardingView` | `HelpScreen.kt`, `OnboardingScreen.kt` | Compose; onboarding via `HorizontalPager` + `PagerIndicator`. |
-| `ConnectView`, `InvitePlayersView` | `ConnectScreen.kt` | **Android-native** Material 3 list, with an explicit network-trouble state (§4.2). |
-| `RootView`, `ContentView` | `RootScaffold.kt` | Menu keeps the felt look; Material 3 buttons. **No "Play online" entry.** |
+| `ConnectView`, `InvitePlayersView` | `ConnectScreen.kt` | **Done.** One transport instead of iOS's two, so there is no merged discovery and no protocol for the player to be aware of — an iPhone advertising over Bonjour is just another row. Has the explicit network-trouble state §4.2 asks for, since AP isolation is otherwise a spinner forever. |
+| `RootView`, `ContentView` | `RootScaffold.kt` | **Done.** Menu keeps the felt look. **No "Play online" entry**, and **no pass-and-play entry** — iOS removed single-device play ("this is a two-phone game") and the two apps should offer the same thing. `GameViewModel.loopback` stays for the JVM tests. iOS's Help button waits on `HelpScreen`. |
 | `GameViewModel` (31 KB) | `core/GameViewModel.kt` | **Done**, and deliberately in `:core`, not `:app`: it imports no Compose — the Android form of the project's "view models never import SwiftUI" rule — and a whole game plays out in a JVM test as a result. |
 | `MatchmakerView`, `GameCenterManager`, `GameCenterTransport` | — | **Not ported.** |
 
@@ -439,10 +439,28 @@ Straight mapping of `Persistence.swift`:
 Settings keys to carry over: `soundEnabled`, `hapticsEnabled`, `playerName`, `colorID`,
 `cardBackID`, `confirmRelease`, scoring mode, onboarding-seen.
 
-**Done for the settings the ported screens can act on** — `settings/SettingsStore.kt`, a DataStore
-Preferences store keyed identically to iOS's `@AppStorage`, read by `MainActivity` and pushed into
-the table, `GameFeedback` and `LocalCardBackID`. `localName` / `localColorID` wait for ConnectScreen
-and `replayBeforeWin` for ScoringReplay; there is no point storing a setting nothing reads.
+**Done.** `settings/SettingsStore.kt` is a DataStore Preferences store keyed identically to iOS's
+`@AppStorage`, and `persistence/AndroidGamePersistence.kt` is the rest: the host's `GameState` to a
+file in `filesDir` (written to a sibling and renamed, so a kill mid-write can't leave a truncated
+game), the resume marker to DataStore, and a guest deleting any stale state file so the file
+reliably identifies the one true host. Only `replayBeforeWin` is still missing, because
+`ScoringReplay` isn't ported and there is no point storing a setting nothing reads.
+
+**One departure from the sketch above, and it is load-bearing.** `GamePersistence`'s methods are
+synchronous fire-and-forget — the view model calls them mid-message — while a file write shouldn't
+touch the main thread and DataStore is suspend-only. Launching a coroutine per call would leave
+their *completion* order undefined, and a `clear()` overtaking the `save()` before it resurrects a
+finished game as a phantom "Rejoin game". Every read and write therefore goes through a single
+queue drained by one writer coroutine. The marker stays in DataStore as planned; the queue is what
+makes that safe.
+
+The saved file is Kotlin's encoding of `GameState`, not Swift's, and that is fine permanently: it
+never leaves the device. Only the redacted snapshots on the wire have to agree (§2).
+
+**Resuming picks the host by who holds the state**, not by the marker's recorded role — iOS's own
+rule from `RootView.onConnected`, applied one step earlier here because `LanTransport` has no
+rendezvous mode in which both sides advertise *and* browse. The device with the file hosts; the
+other browses and is resynced.
 
 `confirmRelease` (default on). **Deliberate divergence:** iOS applies it to the local panel only
 (`isLocal ? confirmRelease : false`), so in pass-and-play the two panels on one screen get
@@ -493,8 +511,8 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table (level with iOS `89adb97`, §6.1), overlays and Settings done; connect/menu/help/onboarding and `ScoringReplay` remain |
-| **7** | Persistence, resume, lifecycle | medium | settings done (§7); saved game and resume remain |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table (level with iOS `89adb97`, §6.1), overlays, Settings, menu and connect done; `HelpScreen`, `OnboardingScreen` and `ScoringReplay` remain |
+| **7** | Persistence, resume, lifecycle | medium | ✅ done — settings, saved game, resume marker and the foreground/background hooks (§7). Untested across two devices, which is the same gap as phase 4. |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |
 

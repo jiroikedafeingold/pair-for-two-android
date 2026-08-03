@@ -1,5 +1,6 @@
 package com.jirofeingold.pairfortwo.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -24,12 +25,16 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -47,6 +52,7 @@ import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -86,6 +92,9 @@ import com.jirofeingold.pairfortwo.ui.theme.playerTheme
  * @param celebrationEffects "Celebration effects" — fireworks and confetti on the win screen. The
  *   win screen itself always shows.
  * @param onOpenSettings opens the settings screen from the table's top-right control.
+ * @param onExit leaves the game and returns to whatever presented the table. Null when there is
+ *   nowhere to go — the quit control, the back handler and the overlays' "Back to menu" all hide
+ *   themselves rather than pretend to offer a way out.
  */
 @Composable
 fun GameTableScreen(
@@ -103,6 +112,7 @@ fun GameTableScreen(
     val ended by vm.ended.collectAsStateWithLifecycle()
     val opponentLeft by vm.opponentLeft.collectAsStateWithLifecycle()
     var playAgainUnavailable by remember { mutableStateOf(false) }
+    var showQuitConfirm by remember { mutableStateOf(false) }
 
     // The game was quit — by this player or the other one — so hand back to whoever presented us.
     LaunchedEffect(ended) { if (ended) onExit?.invoke() }
@@ -221,9 +231,40 @@ fun GameTableScreen(
             ControlButton(
                 onClick = onOpenSettings,
                 description = "Settings",
+                icon = Icons.Filled.Settings,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(top = 6.dp, end = 10.dp),
+            )
+        }
+
+        // Leaving ends the game for *both* players, so it asks first — and back does the same thing
+        // rather than silently abandoning a live game.
+        if (onExit != null) {
+            ControlButton(
+                onClick = { showQuitConfirm = true },
+                description = "Quit game",
+                icon = Icons.Filled.Close,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 6.dp, start = 10.dp),
+            )
+            BackHandler(enabled = !showQuitConfirm) { showQuitConfirm = true }
+        }
+
+        if (showQuitConfirm) {
+            AlertDialog(
+                onDismissRequest = { showQuitConfirm = false },
+                title = { Text("Quit this game?") },
+                text = { Text("The game ends for both players.") },
+                confirmButton = {
+                    TextButton(onClick = { showQuitConfirm = false; vm.quit() }) {
+                        Text("Quit game", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showQuitConfirm = false }) { Text("Keep playing") }
+                },
             )
         }
 
@@ -307,11 +348,12 @@ private fun PlayAgainUnavailableOverlay(onBack: () -> Unit, canGoHome: Boolean) 
     }
 }
 
-/** The table's own chrome button — iOS's `controlButton`: a 32pt dark disc, dimmed white glyph. */
+/** The table's own chrome button — iOS's `controlButton`: a 32dp dark disc, dimmed white glyph. */
 @Composable
 private fun ControlButton(
     onClick: () -> Unit,
     description: String,
+    icon: ImageVector,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -326,7 +368,7 @@ private fun ControlButton(
         contentAlignment = Alignment.Center,
     ) {
         Icon(
-            Icons.Filled.Settings,
+            icon,
             contentDescription = description,
             tint = Color.White.copy(alpha = 0.7f),
             modifier = Modifier.size(18.dp),

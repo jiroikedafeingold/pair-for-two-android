@@ -3,15 +3,19 @@ package com.jirofeingold.pairfortwo.ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -23,6 +27,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
@@ -33,6 +38,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -44,6 +51,7 @@ import com.jirofeingold.pairfortwo.core.ScoringMode
 import com.jirofeingold.pairfortwo.settings.AppSettings
 import com.jirofeingold.pairfortwo.ui.theme.CribGold
 import com.jirofeingold.pairfortwo.ui.theme.PairForTwoTheme
+import com.jirofeingold.pairfortwo.ui.theme.playerThemes
 
 /**
  * The settings screen — the Android counterpart of the iOS `SettingsView`.
@@ -55,9 +63,8 @@ import com.jirofeingold.pairfortwo.ui.theme.PairForTwoTheme
  * Two departures worth naming:
  * - A small [TopAppBar], not the `LargeTopAppBar` the plan sketched. The game is landscape-locked,
  *   and a large bar spends a third of the height on its own title.
- * - No "You" (name, colour) section and no scoring-replay toggle yet — those settings have nothing
- *   to act on until ConnectScreen and ScoringReplay are ported. Every switch here changes something
- *   you can see immediately, which is the point of shipping the screen now.
+ * - No scoring-replay toggle yet — it has nothing to act on until `ScoringReplay` is ported. Every
+ *   other control here changes something you can see immediately.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,6 +97,25 @@ fun SettingsScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState()),
         ) {
+            SectionHeader("You")
+            OutlinedTextField(
+                value = settings.localName,
+                onValueChange = { onChange(settings.copy(localName = it.take(NAME_LIMIT))) },
+                label = { Text("Your name") },
+                singleLine = true,
+                // The name is the Bonjour service name the other device lists, so it is worth saying
+                // that it is not a private setting.
+                supportingText = { Text("Shown to the other player when you host or join.") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+            ColorRow(
+                selected = settings.localColorID,
+                onSelect = { onChange(settings.copy(localColorID = it)) },
+            )
+            SectionFooter("Your peg colour. The other player gets a different one.")
+
             SectionHeader("Scoring")
             for (mode in ScoringMode.entries) {
                 ListItem(
@@ -174,6 +200,34 @@ fun SettingsScreen(
     }
 }
 
+/** The twelve player themes as a scrolling row of taps, with the chosen one ringed. */
+@Composable
+private fun ColorRow(selected: Int, onSelect: (Int) -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        playerThemes.forEachIndexed { id, theme ->
+            val isSelected = id == selected
+            Box(
+                Modifier
+                    .size(34.dp)
+                    .background(theme.primary, CircleShape)
+                    .border(
+                        width = if (isSelected) 3.dp else 0.dp,
+                        color = if (isSelected) Color.White else Color.Transparent,
+                        shape = CircleShape,
+                    )
+                    .clickable { onSelect(id) }
+                    .semantics { contentDescription = theme.displayName },
+            )
+        }
+    }
+}
+
 @Composable
 private fun SectionHeader(text: String) {
     HorizontalDivider(Modifier.padding(top = 8.dp), color = Color.White.copy(alpha = 0.08f))
@@ -251,6 +305,9 @@ private fun CardBackRow(selected: Int, onSelect: (Int) -> Unit) {
         }
     }
 }
+
+/** Long enough for any name worth typing, short enough to stay one readable Bonjour row. */
+private const val NAME_LIMIT = 24
 
 @Preview(showBackground = true, widthDp = 900, heightDp = 420)
 @Composable

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.jirofeingold.pairfortwo.core.ScoringMode
 import kotlinx.coroutines.flow.Flow
@@ -22,16 +23,18 @@ import java.io.IOException
  * crosses to the other player — the scoring mode — still travels as a game message; this is only
  * where *this* device remembers its own preferences.
  *
- * Not here yet, because the screens that own them aren't ported: `localName` / `localColorID`
- * (ConnectScreen), `replayBeforeWin` (ScoringReplay) and the onboarding-seen marker.
+ * Not here yet, because the screen that owns it isn't ported: `replayBeforeWin` (ScoringReplay).
  */
 data class AppSettings(
     /**
-     * Scoring mode. iOS's stored default is [ScoringMode.OFF]; Android starts in
-     * [ScoringMode.FEEDBACK] to match the scaffolding game `MainActivity` opens, which is the only
-     * way into the app until RootScaffold lands. Revisit when the menu exists.
+     * Scoring mode. [ScoringMode.OFF] — count it yourself — matching iOS's stored default.
+     *
+     * Android used to start in [ScoringMode.FEEDBACK], to suit the scaffolding game the app dropped
+     * into before there was a menu. Now that a game starts from the menu the two apps should agree,
+     * and a new player meets the same default on either. iOS explains the choice during onboarding;
+     * until that screen is ported, Settings is the only place it's introduced.
      */
-    val scoringMode: ScoringMode = ScoringMode.FEEDBACK,
+    val scoringMode: ScoringMode = ScoringMode.OFF,
     /** "Confirm after release": the slider stages an amount for the +N button instead of scoring. */
     val confirmRelease: Boolean = true,
     val cardBackID: Int = 0,
@@ -39,7 +42,22 @@ data class AppSettings(
     val soundEnabled: Boolean = true,
     val celebrationEffects: Boolean = true,
     val scoreTrackEnabled: Boolean = true,
-)
+    /** How the other player sees you. Trimmed and defaulted before it goes anywhere — see [player]. */
+    val localName: String = "Player",
+    /** Index into the twelve player themes; your peg's colour. */
+    val localColorID: Int = 1,
+    /** The first-run walkthrough has been seen. Nothing reads it until OnboardingScreen lands. */
+    val hasOnboarded: Boolean = false,
+) {
+    /**
+     * The name to actually use: trimmed, and never blank.
+     *
+     * A blank name would advertise an empty Bonjour service and leave the other player picking from
+     * a list of nameless rows, so the fallback matters more here than it looks. iOS does the same
+     * trim in `RootView.playerName`.
+     */
+    val player: String get() = localName.trim().ifEmpty { "Player" }
+}
 
 private val Context.preferences: DataStore<Preferences> by preferencesDataStore(name = "settings")
 
@@ -66,6 +84,9 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.SOUND_ENABLED] = next.soundEnabled
             prefs[Keys.CELEBRATION_EFFECTS] = next.celebrationEffects
             prefs[Keys.SCORE_TRACK_ENABLED] = next.scoreTrackEnabled
+            prefs[Keys.LOCAL_NAME] = next.localName
+            prefs[Keys.LOCAL_COLOR_ID] = next.localColorID
+            prefs[Keys.HAS_ONBOARDED] = next.hasOnboarded
         }
     }
 
@@ -77,6 +98,9 @@ class SettingsStore(private val context: Context) {
         val SOUND_ENABLED = booleanPreferencesKey("soundEnabled")
         val CELEBRATION_EFFECTS = booleanPreferencesKey("celebrationEffects")
         val SCORE_TRACK_ENABLED = booleanPreferencesKey("scoreTrackEnabled")
+        val LOCAL_NAME = stringPreferencesKey("localName")
+        val LOCAL_COLOR_ID = intPreferencesKey("localColorID")
+        val HAS_ONBOARDED = booleanPreferencesKey("hasOnboarded")
     }
 
     private fun Preferences.toSettings(): AppSettings {
@@ -89,6 +113,9 @@ class SettingsStore(private val context: Context) {
             soundEnabled = this[Keys.SOUND_ENABLED] ?: defaults.soundEnabled,
             celebrationEffects = this[Keys.CELEBRATION_EFFECTS] ?: defaults.celebrationEffects,
             scoreTrackEnabled = this[Keys.SCORE_TRACK_ENABLED] ?: defaults.scoreTrackEnabled,
+            localName = this[Keys.LOCAL_NAME] ?: defaults.localName,
+            localColorID = this[Keys.LOCAL_COLOR_ID] ?: defaults.localColorID,
+            hasOnboarded = this[Keys.HAS_ONBOARDED] ?: defaults.hasOnboarded,
         )
     }
 }

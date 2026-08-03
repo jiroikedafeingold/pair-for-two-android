@@ -12,9 +12,10 @@ Open this folder, pick the **app** run configuration and the **`pft_phone_36`** 
 Run. That AVD is a Pixel 7 on API 36 — the `sbn_*` AVDs belong to StarBattleAndroid and work just as
 well, but this one is this project's.
 
-The app currently drops **straight into a pass-and-play game** in feedback-scoring mode. That is
-scaffolding while the menu and connect screens are built (PLAN.md §10 phase 6) — `RootScaffold` will
-own that decision.
+The app opens on the **menu**: set your name and colour, then **Play nearby** to host or join. Like
+iOS, it is a two-device game — there is no pass-and-play entry, so you need a second device (or an
+iPhone running the iOS app) on the same Wi-Fi to play a real game. Everything up to "Waiting for a
+player to join…" works on one emulator.
 
 ### From the command line
 
@@ -31,7 +32,11 @@ $ANDROID_HOME/platform-tools/adb shell am start -n com.jirofeingold.pairfortwo/.
 
 ### What you can do in it
 
-The table is playable end to end for one hand at a time: cut for deal, discard to the crib, the
+Menu → connect → game, and back again. A game in progress is **saved**: leaving and relaunching
+offers **Rejoin game** with the score, and the device holding the saved state re-hosts it while the
+other rejoins.
+
+The table is playable end to end: cut for deal, discard to the crib, the
 two-step starter cut, pegging, the three shows, then the next hand. Scoring works both ways — the
 slider stages an amount and the **+N** button commits it, or **+1** adds a point immediately.
 Both players' panels use the same gesture; the **gear** in the top right opens Settings, where
@@ -47,8 +52,7 @@ shrink, matching what iOS does on iPad.
 
 **The game is landscape only.** The layout is designed for it, exactly as the iOS one is.
 
-Not there yet: the scoring replay, check-my-count, and the rest of the chrome — menu, connect
-screen, help, onboarding. Settings has no name/colour section until the connect screen exists.
+Not there yet: the scoring replay, check-my-count, help and onboarding.
 
 The table is level with iOS commit `89adb97`; PLAN.md §6.1 records what that covers and what is
 deliberately still waiting on unported screens.
