@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -15,9 +17,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.jirofeingold.pairfortwo.feel.GameFeedback
 import com.jirofeingold.pairfortwo.persistence.AndroidGamePersistence
-import com.jirofeingold.pairfortwo.settings.AppSettings
 import com.jirofeingold.pairfortwo.settings.SettingsStore
 import com.jirofeingold.pairfortwo.ui.RootScaffold
+import com.jirofeingold.pairfortwo.ui.theme.FeltDark
 import com.jirofeingold.pairfortwo.ui.theme.PairForTwoTheme
 import kotlinx.coroutines.launch
 
@@ -47,18 +49,27 @@ class MainActivity : ComponentActivity() {
                     AndroidGamePersistence(context.applicationContext, lifecycleScope)
                 }
 
-                // Defaults until the first read lands, which is one frame away — not a "loading"
-                // state worth a spinner, and the values match what a fresh install stores anyway.
-                val settings by store.settings.collectAsStateWithLifecycle(AppSettings())
+                // Null until the first read lands, a frame or two away, and the felt fills the gap.
+                //
+                // Composing the app against defaults first would be *almost* harmless — except that
+                // `hasOnboarded` defaults to false, so a returning player would be shown a frame of
+                // the welcome tour before the real value arrived. Waiting is simpler than teaching
+                // every reader of a setting to distinguish "not loaded" from "false".
+                val settings by store.settings.collectAsStateWithLifecycle(null)
 
-                RootScaffold(
-                    settings = settings,
-                    onChangeSettings = { next -> scope.launch { store.update { next } } },
-                    feedback = feedback,
-                    persistence = persistence,
-                    scope = lifecycleScope,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                val current = settings
+                if (current == null) {
+                    Box(Modifier.fillMaxSize().background(FeltDark))
+                } else {
+                    RootScaffold(
+                        settings = current,
+                        onChangeSettings = { next -> scope.launch { store.update { next } } },
+                        feedback = feedback,
+                        persistence = persistence,
+                        scope = lifecycleScope,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }

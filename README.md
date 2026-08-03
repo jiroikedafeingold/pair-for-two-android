@@ -52,7 +52,11 @@ shrink, matching what iOS does on iPad.
 
 **The game is landscape only.** The layout is designed for it, exactly as the iOS one is.
 
-Not there yet: the scoring replay, check-my-count, help and onboarding.
+A first launch runs a short **welcome tour** — including the scoring-mode picker and a name prompt —
+and the **?** on the menu and the table opens the full how-to, which illustrates itself with the
+app's real cards and a working scoring slider.
+
+Not there yet: the scoring replay and check-my-count.
 
 The table is level with iOS commit `89adb97`; PLAN.md §6.1 records what that covers and what is
 deliberately still waiting on unported screens.

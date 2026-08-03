@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -92,6 +93,7 @@ import com.jirofeingold.pairfortwo.ui.theme.playerTheme
  * @param celebrationEffects "Celebration effects" — fireworks and confetti on the win screen. The
  *   win screen itself always shows.
  * @param onOpenSettings opens the settings screen from the table's top-right control.
+ * @param onOpenHelp opens the how-to-play guide from the control beside it.
  * @param onExit leaves the game and returns to whatever presented the table. Null when there is
  *   nowhere to go — the quit control, the back handler and the overlays' "Back to menu" all hide
  *   themselves rather than pretend to offer a way out.
@@ -105,6 +107,7 @@ fun GameTableScreen(
     scoreTrackEnabled: Boolean = true,
     celebrationEffects: Boolean = true,
     onOpenSettings: (() -> Unit)? = null,
+    onOpenHelp: (() -> Unit)? = null,
     onExit: (() -> Unit)? = null,
 ) {
     val snapshot by vm.snapshot.collectAsStateWithLifecycle()
@@ -225,17 +228,27 @@ fun GameTableScreen(
             )
         }
 
-        // The top-right controls, over the band. iOS pairs the gear with a "?" for Help; that
-        // screen isn't ported yet, so there is one button until it is.
-        if (onOpenSettings != null) {
-            ControlButton(
-                onClick = onOpenSettings,
-                description = "Settings",
-                icon = Icons.Filled.Settings,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .padding(top = 6.dp, end = 10.dp),
-            )
+        // The top-right controls, over the band: help and settings, as iOS pairs them.
+        Row(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 6.dp, end = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (onOpenHelp != null) {
+                ControlButton(
+                    onClick = onOpenHelp,
+                    description = "How to play",
+                    icon = Icons.AutoMirrored.Filled.HelpOutline,
+                )
+            }
+            if (onOpenSettings != null) {
+                ControlButton(
+                    onClick = onOpenSettings,
+                    description = "Settings",
+                    icon = Icons.Filled.Settings,
+                )
+            }
         }
 
         // Leaving ends the game for *both* players, so it asks first — and back does the same thing

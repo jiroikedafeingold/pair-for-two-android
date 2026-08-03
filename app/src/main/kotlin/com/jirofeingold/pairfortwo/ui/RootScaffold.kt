@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Wifi
@@ -58,6 +59,9 @@ import kotlinx.coroutines.launch
 
 private enum class Screen { MENU, CONNECT, GAME }
 
+/** Why the welcome tour is on screen: the first launch, or a replay from Help. */
+private enum class Onboarding { FIRST_RUN, REPLAY }
+
 /**
  * The app's top level — port of the iOS `RootView`: menu, connect, game.
  *
@@ -83,6 +87,11 @@ fun RootScaffold(
     val context = LocalContext.current
     var screen by remember { mutableStateOf(Screen.MENU) }
     var showingSettings by remember { mutableStateOf(false) }
+    var showingHelp by remember { mutableStateOf(false) }
+    // Read once, from the first real settings value — `MainActivity` waits for that before composing
+    // this, so there is no frame in which the default `false` could flash the tour at a returning
+    // player. `isReplay` is what separates the first run from Help's "replay the welcome tour".
+    var onboarding by remember { mutableStateOf(if (settings.hasOnboarded) null else Onboarding.FIRST_RUN) }
     var vm by remember { mutableStateOf<GameViewModel?>(null) }
     var transport by remember { mutableStateOf<NearbyTransport?>(null) }
     var resumeRole by remember { mutableStateOf<ResumeRole?>(null) }
@@ -130,8 +139,43 @@ fun RootScaffold(
     }
 
     BackHandler(enabled = showingSettings) { showingSettings = false }
+    BackHandler(enabled = showingHelp) { showingHelp = false }
 
     CompositionLocalProvider(LocalCardBackID provides settings.cardBackID) {
+        // Modal layers, outermost first. Onboarding covers everything on a first run; Help and
+        // Settings sit over whichever screen opened them and hand back to it.
+        val tour = onboarding
+        if (tour != null) {
+            OnboardingScreen(
+                settings = settings,
+                onChange = onChangeSettings,
+                isReplay = tour == Onboarding.REPLAY,
+                onFinish = {
+                    if (tour == Onboarding.FIRST_RUN) {
+                        onChangeSettings(settings.copy(hasOnboarded = true))
+                    }
+                    onboarding = null
+                },
+                modifier = modifier.fillMaxSize(),
+            )
+            return@CompositionLocalProvider
+        }
+
+        if (showingHelp) {
+            HelpScreen(
+                onBack = { showingHelp = false },
+                // The tour is only offered from the menu, as on iOS — mid-game it would cover the
+                // table with a five-page walkthrough of how to reach the table.
+                onReplayOnboarding = if (screen == Screen.MENU) {
+                    { showingHelp = false; onboarding = Onboarding.REPLAY }
+                } else {
+                    null
+                },
+                modifier = modifier.fillMaxSize(),
+            )
+            return@CompositionLocalProvider
+        }
+
         if (showingSettings) {
             SettingsScreen(
                 settings = settings,
@@ -147,6 +191,7 @@ fun RootScaffold(
                 settings = settings,
                 resume = resume,
                 onOpenSettings = { showingSettings = true },
+                onOpenHelp = { showingHelp = true },
                 onPlayNearby = {
                     // A new game supersedes any saved one, exactly as iOS does — the new game writes
                     // its own marker as it plays.
@@ -207,6 +252,7 @@ fun RootScaffold(
                         scoreTrackEnabled = settings.scoreTrackEnabled,
                         celebrationEffects = settings.celebrationEffects,
                         onOpenSettings = { showingSettings = true },
+                        onOpenHelp = { showingHelp = true },
                         onExit = leaveGame,
                     )
                 }
@@ -277,6 +323,7 @@ private fun Menu(
     settings: AppSettings,
     resume: AndroidGamePersistence.Resume?,
     onOpenSettings: () -> Unit,
+    onOpenHelp: () -> Unit,
     onPlayNearby: () -> Unit,
     onRejoin: (AndroidGamePersistence.Resume) -> Unit,
     modifier: Modifier = Modifier,
@@ -285,6 +332,22 @@ private fun Menu(
         modifier.background(Brush.verticalGradient(listOf(FeltMid, FeltDark))),
         contentAlignment = Alignment.Center,
     ) {
+        Icon(
+            Icons.AutoMirrored.Filled.HelpOutline,
+            contentDescription = "How to play",
+            tint = Color.White.copy(alpha = 0.85f),
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(top = 8.dp, end = 14.dp)
+                .size(26.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onOpenHelp,
+                ),
+        )
+
         Column(
             Modifier
                 .fillMaxSize()
