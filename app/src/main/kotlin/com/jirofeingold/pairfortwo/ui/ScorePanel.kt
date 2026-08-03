@@ -24,6 +24,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +34,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
@@ -120,6 +124,12 @@ fun ScorePanel(
 
     Box(
         modifier
+            // One spoken summary for the whole panel. Without it a screen reader announces a pile
+            // of unlabelled shapes: the readout, the ring and the track are all decoration around
+            // three controls, and only the controls below are worth stopping on.
+            .semantics(mergeDescendants = false) {
+                contentDescription = "$name, $score points. Opponent $opponentScore."
+            }
             .clip(RoundedCornerShape(22.dp))
             .background(
                 Brush.linearGradient(
@@ -143,6 +153,9 @@ fun ScorePanel(
         ) {
             PlusButton(
                 displayValue = displayValue,
+                // What the tap will actually do, which is not the same in the two modes: staged,
+                // it commits the amount; otherwise it adds a single point.
+                clickLabel = if (awaitingConfirm) "Add $pending points" else "Add one point",
                 highlighted = highlighted,
                 primary = primary,
                 deep = deep,
@@ -240,6 +253,7 @@ private fun ScoreReadout(
 @Composable
 private fun PlusButton(
     displayValue: Int,
+    clickLabel: String,
     highlighted: Boolean,
     primary: Color,
     deep: Color,
@@ -270,6 +284,8 @@ private fun PlusButton(
             )
             .clickable(
                 enabled = enabled,
+                onClickLabel = clickLabel,
+                role = Role.Button,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,
@@ -292,12 +308,16 @@ private fun PlusButton(
 private fun UndoButton(enabled: Boolean, onClick: () -> Unit) {
     Box(
         Modifier
+            // 38dp reads right beside the slider, but it is under the 48dp minimum a thumb (or an
+            // accessibility service) expects — this keeps the drawing small and the target legal.
+            .minimumInteractiveComponentSize()
             .size(38.dp)
             .alpha(if (enabled) 1f else 0.30f)
             .background(Color.White.copy(alpha = 0.08f), CircleShape)
             .border(1.dp, Color.White.copy(alpha = 0.15f), CircleShape)
             .clickable(
                 enabled = enabled,
+                role = Role.Button,
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = onClick,

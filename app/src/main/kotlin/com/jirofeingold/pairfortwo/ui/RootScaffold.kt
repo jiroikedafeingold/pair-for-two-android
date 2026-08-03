@@ -17,11 +17,13 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -43,7 +45,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.jirofeingold.pairfortwo.BuildConfig
 import com.jirofeingold.pairfortwo.core.GameViewModel
+import com.jirofeingold.pairfortwo.core.PlayerID
 import com.jirofeingold.pairfortwo.core.net.LanTransport
 import com.jirofeingold.pairfortwo.core.net.NearbyTransport
 import com.jirofeingold.pairfortwo.feel.GameFeedback
@@ -65,11 +69,11 @@ private enum class Onboarding { FIRST_RUN, REPLAY }
 /**
  * The app's top level — port of the iOS `RootView`: menu, connect, game.
  *
- * **Two-device only, as on iOS.** `GameViewModel.loopback` still exists and a whole pass-and-play
- * game runs in the JVM tests, but there is no menu entry for it: the Swift's own comment is "Single
- * device pass-and-play was removed — this is a two-phone game", and the two apps should offer the
- * same thing. There is also no "Play online" — Android has no Game Center equivalent and v1 doesn't
- * add a relay (PLAN.md §0).
+ * **Two-device only in a release build, as on iOS.** The Swift's own comment is "Single device
+ * pass-and-play was removed — this is a two-phone game", and the two apps should offer the same
+ * thing. Debug builds keep a pass-and-play entry, because without one the table cannot be reached
+ * on a single device and no layout change can be checked on an emulator. There is also no "Play
+ * online" — Android has no Game Center equivalent and v1 doesn't add a relay (PLAN.md §0).
  *
  * A fresh [LanTransport] is built for each attempt, deliberately: `stop()` closes its event channel,
  * so a transport is a one-shot. On a successful connect the connect screen hands ownership of the
@@ -201,6 +205,21 @@ fun RootScaffold(
                     transport = newTransport(context, settings.player, scope)
                     screen = Screen.CONNECT
                 },
+                onPassAndPlay = {
+                    vm = GameViewModel.loopback(
+                        names = mapOf(
+                            PlayerID.ONE to settings.player,
+                            PlayerID.TWO to "Opponent",
+                        ),
+                        colorIDs = mapOf(
+                            PlayerID.ONE to settings.localColorID,
+                            PlayerID.TWO to settings.localColorID + 6,
+                        ),
+                        scope = scope,
+                        scoringMode = settings.scoringMode,
+                    )
+                    screen = Screen.GAME
+                },
                 onRejoin = { marker ->
                     // The device holding the state re-hosts. Decided by the file rather than by the
                     // marker's recorded role, so a stale marker can't leave both sides hosting.
@@ -326,6 +345,7 @@ private fun Menu(
     onOpenSettings: () -> Unit,
     onOpenHelp: () -> Unit,
     onPlayNearby: () -> Unit,
+    onPassAndPlay: () -> Unit,
     onRejoin: (AndroidGamePersistence.Resume) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -341,12 +361,14 @@ private fun Menu(
                 .align(Alignment.TopEnd)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
                 .padding(top = 8.dp, end = 14.dp)
-                .size(26.dp)
+                // The glyph stays 26dp; the tap target is padded out to the 48dp minimum.
+                .minimumInteractiveComponentSize()
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onOpenHelp,
-                ),
+                )
+                .size(26.dp),
         )
 
         Column(
@@ -413,6 +435,20 @@ private fun Menu(
                 foreground = if (resume == null) Color.Black else Color.White,
                 onClick = onPlayNearby,
             )
+
+            // Debug builds only, and deliberately so. The shipping menu matches iOS, which removed
+            // single-device play — but with it gone the table can't be reached without a second
+            // device, which makes every layout change unverifiable on an emulator. `GameViewModel`
+            // still supports loopback for the JVM tests; this is the same path with a button on it.
+            if (BuildConfig.DEBUG) {
+                MenuButton(
+                    label = "Pass and play (debug)",
+                    icon = Icons.Filled.BugReport,
+                    background = Color.White.copy(alpha = 0.14f),
+                    foreground = Color.White.copy(alpha = 0.75f),
+                    onClick = onPassAndPlay,
+                )
+            }
         }
     }
 }

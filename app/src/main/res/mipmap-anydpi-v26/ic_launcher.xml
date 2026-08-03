@@ -1,6 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    The two queens from the iOS icon, generated from the very same `icon_1024.png` so the two
+    stores show the same art (tools/generate-icon.py).
+
+    The art is full-bleed, so it is the foreground at the full 108dp canvas and a launcher's mask
+    crops it to the central ~72dp — the two cards, which is what identifies the app at 48dp. The
+    felt behind it only shows through if a mask is unusually small.
+
+    No <monochrome>: a themed icon has to be a single-colour silhouette, and there is no honest way
+    to derive one from a photographic pair of court cards. Better absent than a grey smear.
+-->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@drawable/ic_launcher_background" />
-    <foreground android:drawable="@drawable/ic_launcher_foreground" />
-    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+    <background android:drawable="@color/felt_dark" />
+    <foreground android:drawable="@mipmap/ic_launcher_foreground" />
 </adaptive-icon>

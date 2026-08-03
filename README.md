@@ -50,7 +50,13 @@ the scoring flags above them, so the cards always sit centred in the space that'
 button never runs off the bottom. On a tablet (height ≥ 600dp) the rail widens and the cut cards
 shrink, matching what iOS does on iPad.
 
-**The game is landscape only.** The layout is designed for it, exactly as the iOS one is.
+**The game is landscape only.** The layout is designed for it, exactly as the iOS one is. On a
+tablet (height ≥ 600dp) the action rail widens, the cut cards halve and the pegging pile drops down
+from the top, matching what iOS does on iPad.
+
+Debug builds carry a **Pass and play (debug)** entry on the menu. Release builds don't: iOS dropped
+single-device play and the two apps should match, but without it the table can't be reached on one
+device and no layout change can be checked on an emulator.
 
 A first launch runs a short **welcome tour** — including the scoring-mode picker and a name prompt —
 and the **?** on the menu and the table opens the full how-to, which illustrates itself with the
@@ -63,6 +69,11 @@ Not there yet: check-my-count — the ✓ that shows the correct count for the h
 
 The table is level with iOS commit `89adb97`; PLAN.md §6.1 records what that covers and what is
 deliberately still waiting on unported screens.
+
+## Releasing
+
+See [RELEASE.md](RELEASE.md) — versioning, signing, the build commands, and what still needs a Play
+Console account.
 
 ## Tests
 

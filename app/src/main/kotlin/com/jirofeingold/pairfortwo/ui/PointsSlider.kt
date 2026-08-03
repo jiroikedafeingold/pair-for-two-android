@@ -13,6 +13,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -51,7 +57,29 @@ fun PointsSlider(
     val knobSize = 32.dp
     val trackHeight = 10.dp
 
-    BoxWithConstraints(modifier) {
+    BoxWithConstraints(
+        modifier
+            // A hand-drawn track and a pointerInput are invisible to a screen reader, and this is
+            // the control the whole game turns on. Declaring it a slider gives TalkBack both a
+            // reading of the staged value and a way to change it without dragging.
+            .semantics {
+                contentDescription = "Points to add"
+                stateDescription = if (value == 0) "No points staged" else "$value points"
+                progressBarRangeInfo = ProgressBarRangeInfo(
+                    current = value.toFloat(),
+                    range = 0f..MAX_VALUE.toFloat(),
+                    steps = MAX_VALUE - 1,
+                )
+                if (enabled) {
+                    setProgress { target ->
+                        val next = target.roundToInt().coerceIn(0, MAX_VALUE)
+                        onValueChange(next)
+                        onCommit(next)
+                        true
+                    }
+                }
+            },
+    ) {
         val usable = maxWidth - knobSize
         val progress = value.toFloat() / MAX_VALUE
 

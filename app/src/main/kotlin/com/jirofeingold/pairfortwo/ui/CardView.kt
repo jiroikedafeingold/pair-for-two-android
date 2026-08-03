@@ -198,35 +198,27 @@ private fun CornerIndex(card: Card, ink: Color, width: Dp, modifier: Modifier = 
 }
 
 /**
- * The back design, shown whole (`Fit`) so none of the art is cropped, over a blurred copy that
- * fills the side margins — the designs are taller than a card, so a fit alone leaves gaps.
+ * The back design, scaled to **fill** the card edge to edge.
  *
- * `Modifier.blur` is a no-op below API 31. There the margins simply show the unblurred crop, which
- * is a cosmetic difference on old devices rather than a broken layout.
+ * The art is taller than a card, so filling crops a little off the top and bottom. That is the
+ * trade deliberately taken: these designs are symmetrical borders around a centred motif, and a
+ * card back that reaches its own edges reads as a card, where a fitted one reads as a picture of a
+ * card with margins.
+ *
+ * **A deliberate divergence from iOS**, which fits the whole art and blurs a copy behind it to fill
+ * the margins (`CardView.swift`). Worth bringing across to iOS if the fuller look is the one to
+ * keep.
  */
 @Composable
 private fun CardBackContent(cardBackID: Int, width: Dp, height: Dp, shape: RoundedCornerShape) {
-    val painter = painterResource(CardBack.from(cardBackID).res)
-    Box(
-        Modifier
+    Image(
+        painter = painterResource(CardBack.from(cardBackID).res),
+        contentDescription = null,
+        contentScale = ContentScale.Crop,
+        modifier = Modifier
             .size(width = width, height = height)
             .clip(shape),
-    ) {
-        Image(
-            painter = painter,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(width * 0.06f),
-        )
-        Image(
-            painter = painter,
-            contentDescription = null,
-            contentScale = ContentScale.Fit,
-            modifier = Modifier.fillMaxSize(),
-        )
-    }
+    )
 }
 
 // ---- Rank + suit tile ----

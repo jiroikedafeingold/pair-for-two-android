@@ -376,6 +376,31 @@ Android specifics to get right:
   still present portrait despite the lock. Worth confirming on real hardware.
 - `core-splashscreen` for the existing splash art.
 
+### 6.2 Phase 8 — what the platform pass actually found
+
+- **Tablet.** Verified on a 1280×800dp API 36 tablet: the rail widens to 30% (capped at 420dp), the
+  cut cards halve, and the pegging pile drops down from the top with the hand centred below it. The
+  `hSizeClass == .regular` branches read as **height ≥ 600dp**, which is `sw600dp` in a
+  landscape-locked app.
+- **Orientation on large screens.** PLAN.md warned that from Android 16 an app targeting SDK 36 has
+  its orientation restriction ignored at sw ≥ 600dp. The lock held on the tablet AVD, but forcing
+  `user_rotation` on a fixed-landscape emulator panel proves little — **still worth confirming on
+  real tablet hardware.**
+- **Edge-to-edge.** Every screen pads to `WindowInsets.safeDrawing`. The table applies it *after*
+  its background, so the felt bleeds behind the system bars while the card budgets — which are
+  computed from those same constraints — stay clear of a landscape cutout.
+- **Predictive back.** `android:enableOnBackInvokedCallback="true"`, plus `BackHandler` on Settings,
+  Help, the connect screen and the table. The table's confirms before abandoning a live game; the
+  menu deliberately has none, since back from the root screen should leave the app.
+- **Accessibility.** The scoring control was the real gap: a hand-drawn track and a `pointerInput`
+  are invisible to a screen reader, and it is the control the whole game turns on. The slider now
+  declares `progressBarRangeInfo` and a `setProgress` action, so TalkBack can both read and set the
+  staged points; the +1 button carries a click label that says which of its two jobs it will do; and
+  the panel has one spoken summary instead of a pile of unlabelled shapes. Touch targets under 48dp
+  (the table's chrome discs, undo, the colour swatches, the menu's help glyph) keep their drawn size
+  and gain a legal target via `minimumInteractiveComponentSize()`.
+- **Foldables — not done.** There is no foldable AVD on this machine, so no posture was tested.
+
 ### 6.1 Keeping up with iOS
 
 The iOS app does not stand still while this port is built, so the Android side records **which iOS
@@ -468,10 +493,16 @@ Android applies it to every panel. The iOS side is worth the same fix.
 
 ## 8. Assets
 
-- **Card backs** — copy the three PNGs (`Royal`, `Celestial`, `Midnight`) from the iOS asset
-  catalog; convert to WebP for size.
-- **App icon** — adaptive icon (foreground/background layers) derived from `icon_1024.png`.
-- **Splash art** — `splash.png`.
+- **Card backs** — copied from the iOS asset catalog as WebP. **Deliberate divergence:** Android
+  scales them to *fill* the card, where iOS fits the whole art and blurs a copy behind it to cover
+  the margins. A back that reaches its own edges reads as a card; a fitted one reads as a picture of
+  one. Worth bringing across to iOS.
+- **App icon** — done. `tools/generate-icon.py` derives every density from the iOS `icon_1024.png`,
+  so both stores show the same art. The foreground sits at 72 of the 108dp canvas, which is what a
+  mask actually reveals: at full bleed the mask ate the tops of both cards.
+- **Splash** — done, but *not* `splash.png`. That art is a 1534×704 banner and the Android splash
+  slot is a masked square, so the launch screen is the app icon on felt via `core-splashscreen`,
+  which is what iOS's launch screen amounts to anyway.
 - **Strings** — everything into `strings.xml` from the start (the iOS app hardcodes English;
   no `.xcstrings` exists yet). Costs nothing now, and makes both apps translatable later.
 
@@ -510,8 +541,8 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
 | **6** | UI — game table first (the bulk), then overlays, then chrome | large | ✅ done — table (level with iOS `89adb97`, §6.1), overlays, Settings, menu, connect, help, onboarding and the scoring replay. **Check-my-count is the one iOS screen with no Android counterpart**; it is a small overlay over the show, not a screen in its own right |
 | **7** | Persistence, resume, lifecycle | medium | ✅ done — settings, saved game, resume marker and the foreground/background hooks (§7). Untested across two devices, which is the same gap as phase 4. |
-| **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
-| **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |
+| **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | ✅ done bar foldables — see §8.1 |
+| **9** | Play Console setup, signing, icon/splash, store listing, release | medium | code side done (icon, splash, signing config); the rest needs a Play Console account — see `RELEASE.md` |
 
 Phases 2 and 4 are where this project succeeds or fails. Phase 6 is the most *hours* but
 the least risk. **Recommend proving iOS↔Android connectivity end-to-end at the close of
@@ -544,10 +575,10 @@ which is the only way to exercise NsdManager itself, the multicast lock, and AP 
    transport, merged connect UI). *Resolved:* the new build speaks both wire formats and
    follows the peer, so old and new iOS builds interoperate (§2.1). The cost is carrying
    dead code until **2.0**, when the legacy path is deleted — see the reminder in §2.1.
-6. **No Android release convention exists yet** — your `CLAUDE.md` App Store section is
-   iOS-only. Android needs its own Play Console + `fastlane supply` (or manual) flow and a
-   versioning rule; StarBattleAndroid's `versionCode`/`versionName` bump convention is the
-   obvious precedent.
+6. **No Android release convention exists yet** — *partly resolved.* `RELEASE.md` now records the
+   versioning rule, the signing setup and the build commands. What remains genuinely needs your
+   Google account: a Play Console entry, the store listing, a privacy policy URL, the data safety
+   form, and `fastlane supply` if it should be as scripted as iOS. **No upload key exists yet.**
 
 *Repo location (formerly item 7) is resolved — see §1.*
 
