@@ -251,6 +251,7 @@ fun RootScaffold(
                         confirmRelease = settings.confirmRelease,
                         scoreTrackEnabled = settings.scoreTrackEnabled,
                         celebrationEffects = settings.celebrationEffects,
+                        replayBeforeWin = settings.replayBeforeWin,
                         onOpenSettings = { showingSettings = true },
                         onOpenHelp = { showingHelp = true },
                         onExit = leaveGame,

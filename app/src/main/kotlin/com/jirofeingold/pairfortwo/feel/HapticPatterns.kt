@@ -172,6 +172,24 @@ object HapticPatterns {
     )
 
     /**
+     * A single crisp tap that scales from a small score (1) to a big hand (12+): mellow and soft for
+     * a peg, hard and sharp for a 24-hand — but always a brief tap, never a lingering rumble.
+     *
+     * The replay fires these in quick succession, so anything sustained would run together into one
+     * long buzz and the whole point is that each step feels proportional and *discrete*.
+     */
+    fun scoreTick(points: Int): HapticPattern {
+        val t = ((points - 1) / 11.0).coerceIn(0.0, 1.0)
+        val intensity = (0.35 + 0.65 * t).toFloat()
+        val sharpness = (0.30 + 0.65 * t).toFloat()
+        val events = mutableListOf<HapticEvent>(transient(0.0, intensity, sharpness))
+        // Only sizeable hands get a short firm thump for extra weight — still under a twentieth of
+        // a second, so it stays a punchy tap.
+        if (t > 0.5) events += continuous(0.01, 0.045, intensity * 0.6f, sharpness)
+        return HapticPattern(events)
+    }
+
+    /**
      * Per-step feedback for the points slider, scaling in strength as the number climbs and
      * stacking a deep transient at the top.
      *

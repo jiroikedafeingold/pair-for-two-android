@@ -91,6 +91,9 @@ class HapticsController(context: Context) {
 
     fun playLose() = play(HapticPatterns.lose())
 
+    /** A score tap whose weight scales with the points — see [HapticPatterns.scoreTick]. */
+    fun scoreTick(points: Int) = play(HapticPatterns.scoreTick(points))
+
     /** @param progress 0…1 position of the value along the points slider. */
     fun tick(progress: Double) = play(HapticPatterns.sliderTick(progress))
 

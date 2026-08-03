@@ -50,6 +50,16 @@ class GameFeedback(
         haptics.playLose()
     }
 
+    /**
+     * A score "tick" whose strength scales with the points: a light tap for a peg or a pair, a
+     * firmer one for a big hand. Used by the scoring replay so each step feels proportional instead
+     * of a constant string of identical taps.
+     */
+    fun playScoreTick(points: Int) {
+        haptics.scoreTick(points)
+        sounds.play(SoundEffects.Effect.DING)
+    }
+
     /** Per-step feedback while dragging the points slider. Haptic only, as on iOS. */
     fun sliderTick(progress: Double) {
         haptics.tick(progress)

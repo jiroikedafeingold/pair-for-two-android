@@ -69,8 +69,8 @@ import com.jirofeingold.pairfortwo.ui.theme.playerThemes
  *
  * **The wording is not iOS's verbatim, because the app isn't.** There is no Play online section
  * (no Game Center equivalent — PLAN.md §0), Bluetooth is not a transport here so connecting is
- * described as same-Wi-Fi, and check-my-count and the scoring replay are left out until those
- * screens are ported. Documenting a button that isn't there would be worse than saying nothing.
+ * described as same-Wi-Fi, and check-my-count is left out until that overlay is ported.
+ * Documenting a button that isn't there would be worse than saying nothing.
  *
  * @param onReplayOnboarding when given (from the menu), offers to replay the welcome tour.
  */
@@ -204,6 +204,10 @@ fun HelpScreen(
             Bullet("**Name & colour**, and your **card back**.")
             Bullet("**Scoring mode** — either player can change it, and it applies to both.")
             Bullet("**Feel & effects:** haptics, sound effects, celebration effects, score rings.")
+            Bullet(
+                "**Scoring replay before the win:** replay the game score-by-score before the win " +
+                    "screen. You can also replay it from the win screen at any time.",
+            )
 
             Section("Tips")
             Bullet("Tap the **?** on the table any time to reopen this guide.")

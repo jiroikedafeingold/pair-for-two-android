@@ -23,7 +23,6 @@ import java.io.IOException
  * crosses to the other player — the scoring mode — still travels as a game message; this is only
  * where *this* device remembers its own preferences.
  *
- * Not here yet, because the screen that owns it isn't ported: `replayBeforeWin` (ScoringReplay).
  */
 data class AppSettings(
     /**
@@ -46,8 +45,10 @@ data class AppSettings(
     val localName: String = "Player",
     /** Index into the twelve player themes; your peg's colour. */
     val localColorID: Int = 1,
-    /** The first-run walkthrough has been seen. Nothing reads it until OnboardingScreen lands. */
+    /** The first-run walkthrough has been seen. */
     val hasOnboarded: Boolean = false,
+    /** Replay the whole game's scoring before showing the win screen. */
+    val replayBeforeWin: Boolean = true,
 ) {
     /**
      * The name to actually use: trimmed, and never blank.
@@ -87,6 +88,7 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.LOCAL_NAME] = next.localName
             prefs[Keys.LOCAL_COLOR_ID] = next.localColorID
             prefs[Keys.HAS_ONBOARDED] = next.hasOnboarded
+            prefs[Keys.REPLAY_BEFORE_WIN] = next.replayBeforeWin
         }
     }
 
@@ -101,6 +103,7 @@ class SettingsStore(private val context: Context) {
         val LOCAL_NAME = stringPreferencesKey("localName")
         val LOCAL_COLOR_ID = intPreferencesKey("localColorID")
         val HAS_ONBOARDED = booleanPreferencesKey("hasOnboarded")
+        val REPLAY_BEFORE_WIN = booleanPreferencesKey("replayBeforeWin")
     }
 
     private fun Preferences.toSettings(): AppSettings {
@@ -116,6 +119,7 @@ class SettingsStore(private val context: Context) {
             localName = this[Keys.LOCAL_NAME] ?: defaults.localName,
             localColorID = this[Keys.LOCAL_COLOR_ID] ?: defaults.localColorID,
             hasOnboarded = this[Keys.HAS_ONBOARDED] ?: defaults.hasOnboarded,
+            replayBeforeWin = this[Keys.REPLAY_BEFORE_WIN] ?: defaults.replayBeforeWin,
         )
     }
 }

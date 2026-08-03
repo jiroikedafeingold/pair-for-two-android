@@ -83,7 +83,7 @@ import com.jirofeingold.pairfortwo.ui.theme.playerTheme
  *
  * ## Not yet ported
  *
- * - The replay and check-my-count overlays.
+ * - The check-my-count overlay.
  *
  * @param confirmRelease the "Confirm after release" setting: the slider stages an amount and the
  *   +N button commits it, rather than scoring the moment a thumb lifts. Applies to *every* panel on
@@ -92,6 +92,7 @@ import com.jirofeingold.pairfortwo.ui.theme.playerTheme
  * @param scoreTrackEnabled "Score progress rings" — the cribbage track drawn around each panel.
  * @param celebrationEffects "Celebration effects" — fireworks and confetti on the win screen. The
  *   win screen itself always shows.
+ * @param replayBeforeWin replay the game's scoring before revealing the win screen.
  * @param onOpenSettings opens the settings screen from the table's top-right control.
  * @param onOpenHelp opens the how-to-play guide from the control beside it.
  * @param onExit leaves the game and returns to whatever presented the table. Null when there is
@@ -106,6 +107,7 @@ fun GameTableScreen(
     confirmRelease: Boolean = true,
     scoreTrackEnabled: Boolean = true,
     celebrationEffects: Boolean = true,
+    replayBeforeWin: Boolean = true,
     onOpenSettings: (() -> Unit)? = null,
     onOpenHelp: (() -> Unit)? = null,
     onExit: (() -> Unit)? = null,
@@ -116,6 +118,18 @@ fun GameTableScreen(
     val opponentLeft by vm.opponentLeft.collectAsStateWithLifecycle()
     var playAgainUnavailable by remember { mutableStateOf(false) }
     var showQuitConfirm by remember { mutableStateOf(false) }
+    // The auto replay shown *before* the win screen has run; `showManualReplay` is the win screen's
+    // own "Replay scoring".
+    var preWinReplayShown by remember { mutableStateOf(false) }
+    var showManualReplay by remember { mutableStateOf(false) }
+
+    // A fresh hand or a rematch re-arms the pre-win replay for the next game over.
+    LaunchedEffect(snapshot.phase) {
+        if (snapshot.phase == GamePhase.DISCARD_TO_CRIB) {
+            preWinReplayShown = false
+            showManualReplay = false
+        }
+    }
 
     // The game was quit — by this player or the other one — so hand back to whoever presented us.
     LaunchedEffect(ended) { if (ended) onExit?.invoke() }
@@ -281,7 +295,15 @@ fun GameTableScreen(
             )
         }
 
-        if (winner != null) {
+        // Whether to auto-play the replay before revealing the win screen — computed in the *same*
+        // composition that sees the winner, never set afterwards. That ordering is the whole point:
+        // if it were decided in an effect, the win overlay (and the multi-second celebration haptic
+        // its LaunchedEffect fires) would be inserted for a frame underneath the replay.
+        val scoreLog = snapshot.scoreLog
+        val wantsPreWinReplay =
+            winner != null && replayBeforeWin && scoreLog.isNotEmpty() && !preWinReplayShown
+
+        if (winner != null && !wantsPreWinReplay) {
             val (who, skunk) = winner
             // Pass-and-play has one device and one screen, so it always shows the celebration.
             // Networked, each device shows its own outcome.
@@ -305,6 +327,11 @@ fun GameTableScreen(
                     onPlayAgain = playAgain,
                     onExit = onExit?.let { { vm.quit() } },
                     opponentLeft = opponentLeft,
+                    onReplay = if (scoreLog.isNotEmpty()) {
+                        { feedback?.stopCelebration(); showManualReplay = true }
+                    } else {
+                        null
+                    },
                 )
             } else {
                 LoserOverlay(
@@ -314,8 +341,27 @@ fun GameTableScreen(
                     onPlayAgain = playAgain,
                     onExit = onExit?.let { { vm.quit() } },
                     opponentLeft = opponentLeft,
+                    onReplay = if (scoreLog.isNotEmpty()) { { showManualReplay = true } } else null,
                 )
             }
+        }
+
+        if (wantsPreWinReplay || showManualReplay) {
+            ScoringReplay(
+                events = scoreLog,
+                nameOne = vm.name(PlayerID.ONE),
+                nameTwo = vm.name(PlayerID.TWO),
+                themeOne = playerTheme(vm.colorID(PlayerID.ONE)),
+                themeTwo = playerTheme(vm.colorID(PlayerID.TWO)),
+                feedback = feedback,
+                onFinish = {
+                    // Pre-win: reveal the win screen, which fires its own celebration then.
+                    // Manual: just dismiss back to the win screen already underneath.
+                    if (wantsPreWinReplay) preWinReplayShown = true
+                    showManualReplay = false
+                },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
 
         if (playAgainUnavailable) {

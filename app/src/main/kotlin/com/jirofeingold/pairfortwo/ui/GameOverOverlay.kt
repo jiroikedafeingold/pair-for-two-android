@@ -113,6 +113,8 @@ fun WinnerOverlay(
     celebrationEffects: Boolean = true,
     /** The other player has disconnected, so a rematch isn't possible — see [GameOverButtons]. */
     opponentLeft: Boolean = false,
+    /** Replay the game's scoring. Null when there is nothing scored to replay. */
+    onReplay: (() -> Unit)? = null,
 ) {
     var animateIn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { animateIn = true }
@@ -206,7 +208,7 @@ fun WinnerOverlay(
                 style = tightTextStyle(13.sp, FontWeight.SemiBold),
             )
 
-            GameOverButtons(opponentLeft, onPlayAgain, onExit)
+            GameOverButtons(opponentLeft, onPlayAgain, onExit, onReplay)
         }
     }
 }
@@ -249,6 +251,8 @@ fun LoserOverlay(
     celebrationEffects: Boolean = true,
     /** The other player has disconnected, so a rematch isn't possible — see [GameOverButtons]. */
     opponentLeft: Boolean = false,
+    /** Replay the game's scoring. Null when there is nothing scored to replay. */
+    onReplay: (() -> Unit)? = null,
 ) {
     var animateIn by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { animateIn = true }
@@ -324,7 +328,7 @@ fun LoserOverlay(
                 style = tightTextStyle(13.sp, FontWeight.SemiBold),
             )
 
-            GameOverButtons(opponentLeft, onPlayAgain, onExit)
+            GameOverButtons(opponentLeft, onPlayAgain, onExit, onReplay)
         }
     }
 }
@@ -341,13 +345,31 @@ private fun GameOverButtons(
     opponentLeft: Boolean,
     onPlayAgain: () -> Unit,
     onExit: (() -> Unit)?,
+    onReplay: (() -> Unit)?,
 ) {
     if (opponentLeft && onExit != null) {
         PrimaryButton("BACK TO MENU", Icons.Filled.Home, onExit)
-        return
+    } else {
+        PrimaryButton("PLAY AGAIN", Icons.Filled.Refresh, onPlayAgain)
     }
-    PrimaryButton("PLAY AGAIN", Icons.Filled.Refresh, onPlayAgain)
-    if (onExit != null) {
+
+    if (onReplay != null) {
+        Text(
+            "Replay scoring",
+            color = CribGold,
+            style = tightTextStyle(12.sp, FontWeight.SemiBold),
+            modifier = Modifier
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onReplay,
+                )
+                .padding(4.dp),
+        )
+    }
+
+    // A separate way home for normal games; redundant once the primary button is already it.
+    if (onExit != null && !opponentLeft) {
         Text(
             "Back to menu",
             color = Color.White.copy(alpha = 0.6f),

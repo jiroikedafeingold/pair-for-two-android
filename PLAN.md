@@ -349,7 +349,7 @@ chrome around it should feel native.**
 | `ScorePanel` (494) | `ScorePanel.kt` | **Done.** Custom track shapes, `PointsSlider` and the skunk marks, all on `Canvas`. Compose's `PathMeasure` gives the position on the track directly, so the marks don't need iOS's trick of approximating it from the bounding box of a tiny trimmed slice. |
 | `WinnerOverlay` (405) | `GameOverOverlay.kt` | **Done.** Fireworks and confetti are `Canvas` particle systems on a single frame clock, rather than 120 individual animations. `.ultraThinMaterial` has no Compose equivalent, so the table itself is blurred behind the card — a no-op below API 31, where the scrim alone still reads. |
 | `LoserOverlay`, `ScoreFlagsView`, `PlayPileView`, `HandView` | direct ports | **Done.** `LoserOverlay` only appears on a networked loser's device, so it is so far untested on screen. |
-| `ScoringReplayView` | `ScoringReplay.kt` | **The last unported screen.** Brings with it `replayBeforeWin`, `GameFeedback.playScoreTick`, and the pre-win gating and watchdog from §6.1. |
+| `ScoringReplayView` | `ScoringReplay.kt` | **Done**, with `replayBeforeWin`, `GameFeedback.playScoreTick` and the pre-win gating from §6.1. **No watchdog**: iOS needs one because SwiftUI can re-create a view and cancel its `Task`, while a `LaunchedEffect` keyed on the score log is only cancelled by leaving composition or by the key changing — and the log is final once the game is over. |
 | `SettingsView` | `SettingsScreen.kt` | **Done, minus the settings with nothing to act on yet** (name/colour, scoring replay). **Android-native:** Material 3 `ListItem` + `Switch`, back arrow. A small `TopAppBar`, not the `LargeTopAppBar` sketched here — the game is landscape-locked and a large bar spends a third of the height on its own title. Reached from a gear control on the table, as on iOS. |
 | `HelpView`, `OnboardingView` | `HelpScreen.kt`, `OnboardingScreen.kt` | **Done.** Help keeps iOS's trick of illustrating itself with the app's *real* cards and scoring control, so the slider in it actually works and a picture can't go stale. Onboarding is a `HorizontalPager` with a dot indicator, and keeps the first-run scoring picker and the random colour. Wording drops what Android hasn't got: no Play online, no Bluetooth, and no check-my-count or scoring replay until those are ported — documenting a button that isn't there would be worse than saying nothing. |
 | `ConnectView`, `InvitePlayersView` | `ConnectScreen.kt` | **Done.** One transport instead of iOS's two, so there is no merged discovery and no protocol for the player to be aware of — an iPhone advertising over Bonjour is just another row. Has the explicit network-trouble state §4.2 asks for, since AP isolation is otherwise a spinner forever. |
@@ -413,13 +413,10 @@ it — the button sits a little lower than the cards' centre, but it can never b
 still doesn't move when flags appear. **The iOS side is worth the same treatment**, alongside the
 `confirmRelease` fix noted in §7.
 
-**Deferred, because they belong to unported screens:**
+**Deferred, because it belongs to an unported screen:**
 
-- `GameFeedback.playScoreTick(points:)` — the scaled replay tick. It has no caller until
-  `ScoringReplay` is ported, and this project's rule is not to add a setting or an effect that
-  nothing reads.
-- The pre-win replay's watchdog, auto-advance and `preWinReplayShown` gating in `GameTableView`.
-- The `Check` capsule in the show rail, which waits on the check-my-count overlay.
+- The `Check` capsule in the show rail, which waits on the check-my-count overlay — the only piece
+  of the §6.1 catch-up still outstanding.
 - iOS's `MultipeerSession` pairing-retry change is already the behaviour `LanTransport` shipped
   with — a reconnecting guest re-browses and re-invites on a timer (`rebrowseIntervalMs`). Nothing
   to port.
@@ -511,7 +508,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large | in progress — table (level with iOS `89adb97`, §6.1), overlays, Settings, menu, connect, help and onboarding done. **`ScoringReplay` is the last screen**, and with it the `replayBeforeWin` setting, the scaled replay haptic and the pre-win gating listed in §6.1 |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | ✅ done — table (level with iOS `89adb97`, §6.1), overlays, Settings, menu, connect, help, onboarding and the scoring replay. **Check-my-count is the one iOS screen with no Android counterpart**; it is a small overlay over the show, not a screen in its own right |
 | **7** | Persistence, resume, lifecycle | medium | ✅ done — settings, saved game, resume marker and the foreground/background hooks (§7). Untested across two devices, which is the same gap as phase 4. |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | |

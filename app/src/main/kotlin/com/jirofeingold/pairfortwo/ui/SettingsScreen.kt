@@ -60,11 +60,8 @@ import com.jirofeingold.pairfortwo.ui.theme.playerThemes
  * top app bar with a back arrow, and section footers doing the explaining. The felt palette carries
  * the brand; the layout is Android's.
  *
- * Two departures worth naming:
- * - A small [TopAppBar], not the `LargeTopAppBar` the plan sketched. The game is landscape-locked,
- *   and a large bar spends a third of the height on its own title.
- * - No scoring-replay toggle yet — it has nothing to act on until `ScoringReplay` is ported. Every
- *   other control here changes something you can see immediately.
+ * One departure worth naming: a small [TopAppBar], not the `LargeTopAppBar` the plan sketched. The
+ * game is landscape-locked, and a large bar spends a third of the height on its own title.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -183,6 +180,17 @@ fun SettingsScreen(
                     "in-game sounds. Celebration effects are the fireworks and flash on the win " +
                     "screen (the win screen itself still shows). Score progress rings trace " +
                     "each player's colour around the scores, closing the loop at 121.",
+            )
+
+            SectionHeader("Scoring replay")
+            SwitchRow(
+                title = "Replay scoring before the win",
+                checked = settings.replayBeforeWin,
+                onCheckedChange = { onChange(settings.copy(replayBeforeWin = it)) },
+            )
+            SectionFooter(
+                "When someone wins, replay the whole game's scoring — score by score — before " +
+                    "showing the win screen. You can also replay it any time from the win screen.",
             )
 
             // The version, as iOS shows it — the thing you ask a player for when they report a bug.

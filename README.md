@@ -56,7 +56,10 @@ A first launch runs a short **welcome tour** — including the scoring-mode pick
 and the **?** on the menu and the table opens the full how-to, which illustrates itself with the
 app's real cards and a working scoring slider.
 
-Not there yet: the scoring replay and check-my-count.
+When someone wins, the game **replays its whole scoring** score-by-score before the win screen (a
+Settings toggle), and the win screen can replay it again on demand.
+
+Not there yet: check-my-count — the ✓ that shows the correct count for the hand you're counting.
 
 The table is level with iOS commit `89adb97`; PLAN.md §6.1 records what that covers and what is
 deliberately still waiting on unported screens.
