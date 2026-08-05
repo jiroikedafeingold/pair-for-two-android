@@ -185,7 +185,7 @@ fun GameTableScreen(
 
         // The same budget the Swift computes. Capping the band stops it leaving a tall dead zone on
         // a tablet; the play area takes whatever is left.
-        val topBandHeight = minOf(height * 0.37f, 190.dp)
+        val topBandHeight = minOf(height * 0.42f, 215.dp)
         // Card budgets still assume the band takes its full cap, so a band that wraps smaller only
         // ever leaves *more* room than the cards were sized for — never less.
         val playHeight = height - topBandHeight
@@ -214,7 +214,12 @@ fun GameTableScreen(
         // the rail.
         val showWidth = minOf((playWidth - 44.dp) / 5f, (playHeight - 40.dp) / 1.45f)
         // The two cut screens hold just two cards, so they'd balloon on a tablet — halve them there.
-        val cutBase = minOf((playWidth - 50.dp) / 2.2f, (playHeight - 76.dp) / 1.45f)
+        // 130dp, not 76: the cut card in the rail carries a "Tap to cut" caption under it, and the
+        // budget has to cover the caption as well as the card or the caption is the thing that gets
+        // clipped off the bottom — silently, because Compose drops an overflowing child rather than
+        // scrolling it. Checked against the shortest layout that has to work: a 411dp-tall emulator,
+        // which is tighter than the 443dp test phone.
+        val cutBase = minOf((playWidth - 50.dp) / 2.2f, (playHeight - 130.dp) / 1.45f)
         val cutWidth = if (isTablet) cutBase * 0.5f else cutBase
 
         val winner = vm.winnerInfo
@@ -477,6 +482,13 @@ private fun ControlButton(
 
 // ---- Top band ----
 
+/**
+ * How much vertical room the floating top-corner controls need: a 32dp button with a 6dp inset
+ * above and the same below. The banner row reserves this, so the scoring panels below it can never
+ * collide with the quit, help or settings icons.
+ */
+private val TOP_CONTROL_ROW_HEIGHT = 44.dp
+
 @Composable
 private fun TopBand(
     vm: GameViewModel,
@@ -493,17 +505,28 @@ private fun TopBand(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(
-            vm.coachBanner,
-            color = Color.White,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            style = tightTextStyle(17.sp, FontWeight.Bold),
-            modifier = Modifier
+        // This row is as tall as the quit / help / settings buttons floating in the band's top
+        // corners (32dp plus their 6dp inset, and the same again below). Reserving that height is
+        // what keeps the scoring panels clear of them: before, the panel began 6dp above where the
+        // icons ended and the gear sat on top of the undo button.
+        Box(
+            Modifier
                 .fillMaxWidth()
-                // Keep clear of the top controls and the screen edges.
-                .padding(horizontal = 44.dp),
-        )
+                .heightIn(min = TOP_CONTROL_ROW_HEIGHT),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                vm.coachBanner,
+                color = Color.White,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                style = tightTextStyle(17.sp, FontWeight.Bold),
+                // Clear of the icons horizontally too, so a long coach line doesn't run under them.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 96.dp),
+            )
+        }
 
         // The scoring flags ("Fifteen 2 +2" …) used to sit here. They live in the play area's action
         // rail now, so this dark band holds only the coach line and the scoreboard — which is what
@@ -549,7 +572,7 @@ private fun TopBand(
                         onUndo = { vm.undo(player) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(76.dp),
+                            .height(92.dp),
                     )
                 }
             }
