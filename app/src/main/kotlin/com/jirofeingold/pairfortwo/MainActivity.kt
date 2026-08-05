@@ -4,6 +4,9 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -34,12 +37,39 @@ import kotlinx.coroutines.launch
  * a game in progress survives a recomposition but not the activity.
  */
 class MainActivity : ComponentActivity() {
+
+    /**
+     * Hide the status and navigation bars entirely — the game runs fullscreen.
+     *
+     * A cribbage table is a board you look down at, and in landscape the navigation bar eats a strip
+     * down one side of it. `BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE` keeps the bars reachable: a swipe
+     * from an edge brings them back as an overlay, and they hide again on their own without ever
+     * resizing the layout underneath.
+     */
+    private fun goFullscreen() {
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        controller.systemBarsBehavior =
+            WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(WindowInsetsCompat.Type.systemBars())
+    }
+
+    /**
+     * The system puts the bars back whenever the window loses and regains focus — after a permission
+     * dialog, a notification shade pull, or the recents switcher. Without this the app would come
+     * back from any of those no longer fullscreen.
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) goFullscreen()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Before super, as the library requires: this swaps the splash theme for the app's own and
         // holds the splash until the first frame is ready.
         installSplashScreen()
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        goFullscreen()
         setContent {
             PairForTwoTheme {
                 val context = LocalContext.current

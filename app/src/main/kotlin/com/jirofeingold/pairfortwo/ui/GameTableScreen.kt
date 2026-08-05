@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
@@ -52,6 +55,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
@@ -156,17 +160,28 @@ fun GameTableScreen(
         vm.advance()
     }
 
+    // The insets are *measured* here but applied further in, to the two bands' contents rather
+    // than to the table as a whole. Padding the whole table would inset its backgrounds too, and
+    // the scoring band is meant to be a full-bleed strip across the screen — inset, it reads as a
+    // floating panel with felt down either side. The app runs fullscreen, so on most devices these
+    // are zero anyway; they still matter for a display cutout, and for the moment after a swipe
+    // brings the system bars back.
+    val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
+    val layoutDirection = LocalLayoutDirection.current
+    val insetStart = safeInsets.calculateLeftPadding(layoutDirection)
+    val insetEnd = safeInsets.calculateRightPadding(layoutDirection)
+    val insetTop = safeInsets.calculateTopPadding()
+    val insetBottom = safeInsets.calculateBottomPadding()
+
     BoxWithConstraints(
         modifier
             .fillMaxSize()
-            // Felt first, then the insets: the gradient bleeds behind the status and navigation
-            // bars while everything measured inside — including the card budgets below, which are
-            // computed from these constraints — stays clear of them and of a landscape cutout.
-            .background(Brush.verticalGradient(listOf(FeltMid, FeltDark)))
-            .windowInsetsPadding(WindowInsets.safeDrawing),
+            .background(Brush.verticalGradient(listOf(FeltMid, FeltDark))),
     ) {
-        val height = maxHeight
-        val width = maxWidth
+        // Budgets are computed from the *usable* area, so hiding the insets from the backgrounds
+        // doesn't quietly hand the cards space they can't actually occupy.
+        val height = maxHeight - insetTop - insetBottom
+        val width = maxWidth - insetStart - insetEnd
 
         // The same budget the Swift computes. Capping the band stops it leaving a tall dead zone on
         // a tablet; the play area takes whatever is left.
@@ -227,8 +242,15 @@ fun GameTableScreen(
                 onUncommittedChange = { player, amount -> uncommitted[player] = amount },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(max = topBandHeight)
+                    // The band's own height plus whatever sits above it, so the dark strip runs
+                    // edge to edge and up under a cutout rather than stopping short of it.
+                    .heightIn(max = topBandHeight + insetTop)
                     .background(Color.Black.copy(alpha = 0.22f))
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                        ),
+                    )
                     .clipToBounds(),
             )
             BottomBand(
@@ -247,6 +269,11 @@ fun GameTableScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal,
+                        ),
+                    )
                     .padding(vertical = 14.dp),
             )
         }
