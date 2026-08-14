@@ -13,7 +13,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,8 +40,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -76,9 +87,14 @@ fun SettingsScreen(
 ) {
     Scaffold(
         modifier = modifier,
-        contentWindowInsets = WindowInsets.safeDrawing,
+        contentWindowInsets = WindowInsets.safeContent,
         topBar = {
             TopAppBar(
+                // Pushed clear of the system's *mandatory* gesture strips — the top one is where
+                // the swipe for the hidden status bar lives, and a back arrow sitting in it loses
+                // presses to gesture arbitration. Same reason the table's corner controls moved.
+                windowInsets = WindowInsets.safeContent
+                    .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                 title = { Text("Settings") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
@@ -98,9 +114,25 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState()),
         ) {
             SectionHeader("You")
+            // The field edits a local draft, not the stored value.
+            //
+            // Feeding `value` straight from the settings flow round-trips every keystroke through
+            // DataStore — a write, a file, and an emission back — and typing outruns that easily.
+            // A character typed before the previous emission arrives is composed against the *old*
+            // text, so letters land out of order or vanish: the "random letters" this looked like.
+            // The draft is the source of truth while the field is focused, and adopts the stored
+            // value again once it isn't (a reset elsewhere, or the first load landing late).
+            var nameDraft by rememberSaveable { mutableStateOf(settings.localName) }
+            var nameFocused by remember { mutableStateOf(false) }
+            LaunchedEffect(settings.localName, nameFocused) {
+                if (!nameFocused && settings.localName != nameDraft) nameDraft = settings.localName
+            }
             OutlinedTextField(
-                value = settings.localName,
-                onValueChange = { onChange(settings.copy(localName = it.take(NAME_LIMIT))) },
+                value = nameDraft,
+                onValueChange = {
+                    nameDraft = it.take(NAME_LIMIT)
+                    onChange(settings.copy(localName = nameDraft))
+                },
                 label = { Text("Your name") },
                 singleLine = true,
                 // The name is the Bonjour service name the other device lists, so it is worth saying
@@ -108,7 +140,8 @@ fun SettingsScreen(
                 supportingText = { Text("Shown to the other player when you host or join.") },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .onFocusChanged { nameFocused = it.isFocused },
             )
             ColorRow(
                 selected = settings.localColorID,

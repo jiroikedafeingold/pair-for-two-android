@@ -84,6 +84,12 @@ class LanTransport(
     private val lock = Mutex()
 
     private var serverSocket: ServerSocket? = null
+
+    /**
+     * The port this transport hosts on, chosen once and then kept — see [startListenerLocked].
+     * Zero until the first listener opens.
+     */
+    private var hostPort = 0
     private var acceptJob: Job? = null
     private var browseJob: Job? = null
     private var reconnectJob: Job? = null
@@ -109,9 +115,37 @@ class LanTransport(
 
     // ---- Connect lifecycle ----
 
+    /**
+     * Begin advertising, once.
+     *
+     * **Idempotent, and that matters more than it looks.** The listener takes an ephemeral port and
+     * advertises it, so starting again moves the port — and a guest that has already resolved the
+     * first advertisement then dials a port nobody is listening on. It gets no refusal it can act
+     * on, so it sits on "Connecting…" while the host sits on "Waiting for a player to join…", which
+     * is exactly the deadlock this caused in a real game. The trigger is nothing exotic: a second
+     * tap on "Host a game".
+     */
+    /**
+     * A trace hook for the pairing handshake, off unless something sets it.
+     *
+     * `:core` has no Android dependencies, so this is a lambda the app points at logcat in debug
+     * builds rather than a `Log` call. It exists because a hosting failure in the field leaves no
+     * evidence at all otherwise: the two phones just sit there, and the interesting facts — which
+     * port was advertised, whether anything was ever accepted, which end dropped — are all in here.
+     */
+    var trace: ((String) -> Unit)? = null
+
+    private fun trace(message: String) {
+        trace?.invoke(message)
+    }
+
     override fun startHosting() {
         scope.launch {
             lock.withLock {
+                if (isHost && serverSocket != null && connection == null) {
+                    trace("startHosting ignored — already advertising on ${serverSocket?.localPort}")
+                    return@withLock
+                }
                 isHost = true
                 _phase.value = TransportPhase.HOSTING
                 startListenerLocked()
@@ -119,9 +153,11 @@ class LanTransport(
         }
     }
 
+    /** Begin browsing, once — a repeat would drop the peer list and restart discovery. */
     override fun startBrowsing() {
         scope.launch {
             lock.withLock {
+                if (!isHost && browseJob != null && connection == null) return@withLock
                 isHost = false
                 _phase.value = TransportPhase.BROWSING
                 startBrowserLocked()
@@ -156,37 +192,98 @@ class LanTransport(
 
     private suspend fun startListenerLocked() {
         closeListenerLocked()
+        // **Keep the same port for the life of the transport.**
+        //
+        // This used to take a fresh ephemeral port every time, and re-listening is not rare: any
+        // drop sends the host back here. A guest that has already resolved the advertisement is
+        // then dialling a port nobody is listening on — and it gets no refusal it can act on, so it
+        // sits on "Connecting…" while the host sits on "Waiting for a player to join…". Seen in the
+        // trace as `paired with …` followed 167ms later by `hosting: listening on <different port>`.
+        //
+        // `reuseAddress` is what makes rebinding work at all: the old socket is still in TIME_WAIT.
         val server = try {
-            withContext(io) { ServerSocket(0) }   // ephemeral port, advertised below
+            withContext(io) { openListener(hostPort) }
         } catch (_: Exception) {
+            // The remembered port can be genuinely taken — by another app, or by our own socket if
+            // the OS refuses the reuse. Better a moved port than no game at all.
+            runCatching { withContext(io) { openListener(0) } }.getOrNull()
+        } ?: run {
             failLocked()
             return
         }
+        hostPort = server.localPort
         serverSocket = server
+        trace("hosting: listening on ${server.localPort}, advertising as '$displayName'")
         discovery.advertise(displayName, server.localPort)
 
         val gen = generation
         acceptJob = scope.launch {
-            val socket = try {
-                runInterruptible(io) { server.accept() }
-            } catch (_: Exception) {
-                return@launch
-            }
-            lock.withLock {
-                // The host takes the first guest and stops advertising — this is a two-player game.
-                if (generation != gen || connection != null) {
-                    runCatching { socket.close() }
-                    return@withLock
+            // **Keep accepting until one connection actually sticks.**
+            //
+            // This used to accept exactly once and then return, which deadlocked a real
+            // iOS-joins-Android-host game: the host sat on "Waiting for a player to join…" while
+            // the guest sat on "Connecting…". Any inbound connection the host declined — or any
+            // connection that arrived while the listener was between generations — ended the
+            // accept job, and the *next* one was never accepted at all. It still completes at the
+            // TCP level, because the kernel finishes the handshake into the backlog on its own, so
+            // the guest believes it is connected, sends its hello, and waits forever for a reply
+            // from an app that is no longer listening.
+            //
+            // `NWConnection` makes that likely rather than theoretical: Bonjour resolves to both an
+            // IPv6 and an IPv4 address and Network.framework races them, so the host can be handed
+            // a connection the guest is about to abandon. Looping means an abandoned one costs a
+            // socket close instead of the game.
+            while (isActive) {
+                val socket = try {
+                    runInterruptible(io) { server.accept() }
+                } catch (_: Exception) {
+                    trace("accept ended (listener closed or failed)")
+                    // Either we closed the listener ourselves — the normal path once bound — or it
+                    // failed outright. Say so if we are still meant to be hosting, rather than
+                    // advertising a port nothing is reading.
+                    lock.withLock {
+                        if (generation == gen && connection == null && serverSocket === server) {
+                            failLocked()
+                        }
+                    }
+                    return@launch
                 }
-                // Close the listener but don't cancel `acceptJob`: we are running inside it, and
-                // cancelling ourselves here would abandon the connection we just accepted.
-                serverSocket?.let { runCatching { it.close() } }
-                serverSocket = null
-                discovery.stopAdvertising()
-                bindLocked(socket)
+
+                trace("accepted ${socket.inetAddress?.hostAddress}")
+                var keepListening = false
+                lock.withLock {
+                    when {
+                        // A newer listener or connection owns the transport now; this job is stale.
+                        generation != gen -> runCatching { socket.close() }
+                        // Already paired — this is a straggler. Drop it and stay available in case
+                        // the pairing we have turns out to be the dead half of the race.
+                        connection != null -> {
+                            trace("already paired — dropping straggler, still listening")
+                            runCatching { socket.close() }
+                            keepListening = true
+                        }
+                        else -> {
+                            // Close the listener but don't cancel `acceptJob`: we are running
+                            // inside it, and cancelling ourselves here would abandon the
+                            // connection we just accepted.
+                            serverSocket?.let { runCatching { it.close() } }
+                            serverSocket = null
+                            discovery.stopAdvertising()
+                            bindLocked(socket)
+                        }
+                    }
+                }
+                if (!keepListening) return@launch
             }
         }
     }
+
+    /** A listener on [port], or an ephemeral one when it is 0. */
+    private fun openListener(port: Int): ServerSocket =
+        ServerSocket().apply {
+            reuseAddress = true
+            bind(InetSocketAddress(port))
+        }
 
     private fun closeListenerLocked() {
         acceptJob?.cancel()
@@ -252,6 +349,7 @@ class LanTransport(
     }
 
     private fun bindLocked(socket: Socket) {
+        trace("paired with ${socket.inetAddress?.hostAddress}:${socket.port}")
         runCatching { socket.tcpNoDelay = true }
         generation += 1
         val conn = Conn(socket, generation)
@@ -420,6 +518,7 @@ class LanTransport(
      */
     private fun handleDropLocked(gen: Int = generation) {
         if (gen != generation) return
+        trace("connection dropped (didConnect=$didConnect)")
         if (_phase.value == TransportPhase.RECONNECTING) return   // already recovering
         if (!didConnect) {
             failLocked()
@@ -441,5 +540,6 @@ class LanTransport(
     private companion object {
         const val OUTBOX_CAP = 200
         const val CONNECT_TIMEOUT_MS = 8_000
+
     }
 }

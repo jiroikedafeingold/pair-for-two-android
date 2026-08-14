@@ -7,6 +7,7 @@ import com.jirofeingold.pairfortwo.core.Rank
 import com.jirofeingold.pairfortwo.core.Suit
 import java.net.InetAddress
 import java.net.InetSocketAddress
+import java.net.Socket
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -16,6 +17,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -154,6 +156,52 @@ class LanTransportTest {
     }
 
     // ---- Tests ----
+
+    @Test
+    fun `tapping host twice leaves the guest's resolved address valid`() = runBlocking {
+        val net = FakeNetwork()
+        val host = transport("Host", net)
+        val guest = transport("Guest", net)
+
+        host.transport.startHosting()
+        guest.transport.startBrowsing()
+        val peer = withTimeout(10_000) {
+            guest.transport.discoveredPeers.first { it.isNotEmpty() }
+        }.single()
+
+        // The second tap — easy to do, and it used to reopen the listener on a *fresh* ephemeral
+        // port and re-advertise. The guest had already resolved the first advertisement, so it then
+        // dialled a port nobody was listening on: "Connecting…" on one phone, "Waiting for a player
+        // to join…" on the other, forever.
+        host.transport.startHosting()
+        delay(300)
+        assertEquals(peer, guest.transport.discoveredPeers.value.single(), "the advertisement moved")
+
+        guest.transport.invite(peer)
+        host.events.awaitConnected()
+        guest.events.awaitConnected()
+    }
+
+    @Test
+    fun `a host that has to listen again keeps the same port`() = runBlocking {
+        val net = FakeNetwork()
+        val host = transport("Host", net)
+        host.transport.startHosting()
+        val first = withTimeout(10_000) { net.hosts.first { it.isNotEmpty() } }.single().port
+
+        // A connection that pairs and immediately dies — a peer that abandoned it, or a real drop.
+        // The host goes back to listening, and used to do so on a *fresh* ephemeral port, stranding
+        // any guest that had already resolved the advertisement.
+        Socket().apply {
+            connect(InetSocketAddress(InetAddress.getLoopbackAddress(), first), 5_000)
+            close()
+        }
+
+        val second = withTimeout(10_000) {
+            net.hosts.first { it.isNotEmpty() && it.single().port != 0 }
+        }.single().port
+        assertEquals(first, second, "the host moved port, so a resolved guest can no longer reach it")
+    }
 
     @Test
     fun `host and guest exchange messages over a real socket`() = runBlocking {

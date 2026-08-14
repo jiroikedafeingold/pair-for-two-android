@@ -3,8 +3,10 @@ package com.jirofeingold.pairfortwo.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -40,18 +44,25 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ripple
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -59,6 +70,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -143,6 +155,12 @@ fun GameTableScreen(
     // The game was quit — by this player or the other one — so hand back to whoever presented us.
     LaunchedEffect(ended) { if (ended) onExit?.invoke() }
 
+    // Hitting exactly 31 is the one moment in pegging with no button behind it — it falls out of
+    // the count — so it is felt here rather than at a call site.
+    LaunchedEffect(snapshot.runningCount) {
+        if (snapshot.runningCount == 31) feedback?.play(HapticPatterns.Action.THIRTY_ONE)
+    }
+
     // Points staged on a panel but not yet claimed, per player — pass-and-play shows a panel each
     // and either can be mid-stage. Continue folds them in, so a last-card or go point can't be
     // stranded by moving the game on — the same reason iOS tracks it.
@@ -157,6 +175,7 @@ fun GameTableScreen(
             clearSignal += 1
             uncommitted.clear()
         }
+        feedback?.play(HapticPatterns.Action.ADVANCE)
         vm.advance()
     }
 
@@ -168,11 +187,39 @@ fun GameTableScreen(
     // brings the system bars back.
     val safeInsets = WindowInsets.safeDrawing.asPaddingValues()
     val layoutDirection = LocalLayoutDirection.current
-    val insetStart = safeInsets.calculateLeftPadding(layoutDirection)
-    val insetEnd = safeInsets.calculateRightPadding(layoutDirection)
     val insetTop = safeInsets.calculateTopPadding()
     val insetBottom = safeInsets.calculateBottomPadding()
 
+    // **Horizontal insets are applied symmetrically**, using the larger of the two sides.
+    //
+    // A landscape phone puts its selfie camera on one side only — 47dp of cutout on the left of the
+    // test device and nothing on the right. Padding each side by its own inset clears the camera but
+    // shifts everything 47dp right, and the scoreboard visibly stops looking centred. Since the
+    // table is a symmetric composition, matching the sides costs a few dp of felt on the clear side
+    // and buys a layout that is centred *on the screen*, which is what the eye actually checks.
+    val insetSide = maxOf(
+        safeInsets.calculateLeftPadding(layoutDirection),
+        safeInsets.calculateRightPadding(layoutDirection),
+    )
+
+    // Where the system will take a gesture no matter what the app asks. `safeContent` is
+    // `safeDrawing` plus the gesture strips, and is what every other screen pads by wholesale; the
+    // table can't afford that — the strips are 43dp of its height — so only the controls use it.
+    //
+    // The floating corner controls have to clear these or they are simply hard to press: the strips
+    // are *mandatory*, so `systemGestureExclusion()` is ignored inside them and a tap that drifts a
+    // pixel is read as a system swipe. On the test device that is the top 43dp (swipe down for the
+    // hidden status bar) and the right 48dp (the navigation bar's edge) — which is exactly where
+    // help and settings were sitting.
+    val gestureInsets = WindowInsets.safeContent.asPaddingValues()
+    val controlInsetTop = maxOf(insetTop, gestureInsets.calculateTopPadding())
+    val controlInsetSide = maxOf(
+        insetSide,
+        gestureInsets.calculateLeftPadding(layoutDirection),
+        gestureInsets.calculateRightPadding(layoutDirection),
+    )
+
+    CompositionLocalProvider(LocalFeedback provides feedback) {
     BoxWithConstraints(
         modifier
             .fillMaxSize()
@@ -181,11 +228,12 @@ fun GameTableScreen(
         // Budgets are computed from the *usable* area, so hiding the insets from the backgrounds
         // doesn't quietly hand the cards space they can't actually occupy.
         val height = maxHeight - insetTop - insetBottom
-        val width = maxWidth - insetStart - insetEnd
+        val width = maxWidth - insetSide * 2
 
-        // The same budget the Swift computes. Capping the band stops it leaving a tall dead zone on
-        // a tablet; the play area takes whatever is left.
-        val topBandHeight = minOf(height * 0.42f, 215.dp)
+        // The band is exactly as tall as its content needs — see [TOP_BAND_HEIGHT] — rather than a
+        // fraction of the screen. It used to take 42% (capped at 215dp) and spend the surplus on
+        // whitespace above the scoreboard, which is height the cards want far more.
+        val topBandHeight = TOP_BAND_HEIGHT
         // Card budgets still assume the band takes its full cap, so a band that wraps smaller only
         // ever leaves *more* room than the cards were sized for — never less.
         val playHeight = height - topBandHeight
@@ -207,8 +255,17 @@ fun GameTableScreen(
         // as its own layout allows. Discard: a six-card hand. Pegging: a pile above the hand, so
         // shorter. Show: the cut plus a four-card row.
         val handWidth = minOf((playWidth - 34.dp) / 7f, (playHeight - 64.dp) / 1.45f)
-        val peggingHandWidth = minOf(handWidth, (playHeight - 44.dp) / 2.15f)
-        val pileWidth = peggingHandWidth * 0.5f
+        // Pegging is budgeted on its own terms rather than inheriting the discard hand's width.
+        // Its hand is at most four cards, not six, so dividing the column by seven left them far
+        // narrower than the space allowed; and the vertical stack is a half-height pile, one 8dp
+        // gap and the hand — 2.175x the card width — so reserving 44dp for it was ~36dp of nothing.
+        // The vertical stack, measured rather than guessed: 28dp of column padding, a ~24dp label
+        // row over the pile ("The Cut" / "Count" / "Crib"), an 8dp gap, then the pile card at
+        // 0.45x and the hand card at 1x — 1.45x their widths in height. 60dp of fixed overhead and
+        // a 2.11 ratio. The label row is what the old 2.15/44dp budget missed, which is why the
+        // hand hung off the bottom the moment the play area got taller.
+        val peggingHandWidth = minOf((playWidth - 40.dp) / 4.6f, (playHeight - 66.dp) / 1.96f)
+        val pileWidth = peggingHandWidth * 0.35f
         // The show row is the cut card + a 16dp gap + a four-card hand at 8dp spacing — five cards
         // and ~44dp — so dividing by five keeps it inside the play column instead of spilling into
         // the rail.
@@ -218,8 +275,10 @@ fun GameTableScreen(
         // budget has to cover the caption as well as the card or the caption is the thing that gets
         // clipped off the bottom — silently, because Compose drops an overflowing child rather than
         // scrolling it. Checked against the shortest layout that has to work: a 411dp-tall emulator,
-        // which is tighter than the 443dp test phone.
-        val cutBase = minOf((playWidth - 50.dp) / 2.2f, (playHeight - 130.dp) / 1.45f)
+        // which is tighter than the 443dp test phone. 148dp, not 130: at 130 the caption's
+        // descenders sat on the bottom edge of the test phone once the play area got its height
+        // back.
+        val cutBase = minOf((playWidth - 50.dp) / 2.2f, (playHeight - 148.dp) / 1.45f)
         val cutWidth = if (isTablet) cutBase * 0.5f else cutBase
 
         val winner = vm.winnerInfo
@@ -245,17 +304,24 @@ fun GameTableScreen(
                 scoreTrackEnabled = scoreTrackEnabled,
                 clearSignal = clearSignal,
                 onUncommittedChange = { player, amount -> uncommitted[player] = amount },
+                onQuit = if (onExit != null) ({ showQuitConfirm = true }) else null,
+                onOpenHelp = onOpenHelp,
+                onOpenSettings = onOpenSettings,
                 modifier = Modifier
                     .fillMaxWidth()
                     // The band's own height plus whatever sits above it, so the dark strip runs
                     // edge to edge and up under a cutout rather than stopping short of it.
+                    //
+                    // The band is deliberately *not* pushed down by the controls' gesture inset.
+                    // It was, briefly, and it cost the play area 43dp on the test phone — the cards
+                    // visibly shrank. Only the controls move; the band just reserves a taller first
+                    // row for them, which its own slack absorbs.
                     .heightIn(max = topBandHeight + insetTop)
                     .background(Color.Black.copy(alpha = 0.22f))
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
-                        ),
-                    )
+                    // Padding, not `windowInsetsPadding`, because the sides are matched rather than
+                    // taken per-side — see [insetSide]. The background is applied first either way,
+                    // so the dark strip still bleeds to the screen edge.
+                    .padding(top = insetTop, start = controlInsetSide, end = controlInsetSide)
                     .clipToBounds(),
             )
             BottomBand(
@@ -274,51 +340,19 @@ fun GameTableScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .windowInsetsPadding(
-                        WindowInsets.safeDrawing.only(
-                            WindowInsetsSides.Bottom + WindowInsetsSides.Horizontal,
-                        ),
-                    )
+                    // The bottom edge is a system gesture strip on a gesture-navigation phone,
+                    // and the hand you tap to play sits on it, so this clears the gesture inset
+                    // rather than just the drawing one. Zero on the test device, where the
+                    // navigation bar is down the side instead.
+                    .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Bottom))
+                    .padding(horizontal = controlInsetSide)
                     .padding(vertical = 14.dp),
             )
         }
 
-        // The top-right controls, over the band: help and settings, as iOS pairs them.
-        Row(
-            Modifier
-                .align(Alignment.TopEnd)
-                .padding(top = 6.dp, end = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (onOpenHelp != null) {
-                ControlButton(
-                    onClick = onOpenHelp,
-                    description = "How to play",
-                    icon = Icons.AutoMirrored.Filled.HelpOutline,
-                )
-            }
-            if (onOpenSettings != null) {
-                ControlButton(
-                    onClick = onOpenSettings,
-                    description = "Settings",
-                    icon = Icons.Filled.Settings,
-                )
-            }
-        }
-
-        // Leaving ends the game for *both* players, so it asks first — and back does the same thing
-        // rather than silently abandoning a live game.
-        if (onExit != null) {
-            ControlButton(
-                onClick = { showQuitConfirm = true },
-                description = "Quit game",
-                icon = Icons.Filled.Close,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 6.dp, start = 10.dp),
-            )
-            BackHandler(enabled = !showQuitConfirm) { showQuitConfirm = true }
-        }
+        // The corner controls are no longer floated over the band — they sit *in* it, on the
+        // scoreboard row. See [TopBand].
+        if (onExit != null) BackHandler(enabled = !showQuitConfirm) { showQuitConfirm = true }
 
         if (showQuitConfirm) {
             AlertDialog(
@@ -412,6 +446,7 @@ fun GameTableScreen(
             )
         }
     }
+    }
 }
 
 /**
@@ -448,7 +483,49 @@ private fun PlayAgainUnavailableOverlay(onBack: () -> Unit, canGoHome: Boolean) 
     }
 }
 
-/** The table's own chrome button — iOS's `controlButton`: a 32dp dark disc, dimmed white glyph. */
+/** The drawn disc, and the touch area around it. See [ControlButton]. */
+/**
+ * The game's sound and haptics, ambient for the table.
+ *
+ * Every phase's play area is its own private composable several levels down, and each of them has
+ * an action worth feeling — a cut, a card, a go. Threading one handle through all of them would be
+ * noise at every signature for a value that is the same everywhere on screen, so it rides the
+ * composition the way [LocalCardBackID] does.
+ */
+private val LocalFeedback = staticCompositionLocalOf<GameFeedback?> { null }
+
+/** One line of coach banner. */
+private val BANNER_ROW_HEIGHT = 26.dp
+
+/** The scoreboard row: the score panels, and the chrome controls sitting level with them. */
+private val SCORE_PANEL_HEIGHT = 92.dp
+
+/**
+ * The top band's whole height, and so the play area's budget.
+ *
+ * Stated rather than derived from the screen: 12dp of padding, the coach line, an 8dp gap, the
+ * scoreboard row and 4dp below it. Every dp not spent here is a dp the cards get.
+ */
+private val TOP_BAND_HEIGHT = 12.dp + BANNER_ROW_HEIGHT + 8.dp + SCORE_PANEL_HEIGHT + 4.dp
+
+private val CONTROL_DISC = 36.dp
+private val CONTROL_TARGET = 48.dp
+
+/**
+ * The table's own chrome button — iOS's `controlButton`, sized for a thumb.
+ *
+ * **Deliberate divergence from iOS**, which draws a 32pt disc. Three things made that too small
+ * here, and they compound in exactly the corner these buttons live in:
+ *
+ * - The clickable was the *drawn* size. `minimumInteractiveComponentSize` reserves 48dp of layout
+ *   and relies on out-of-bounds pointer interception to feed the smaller child; the target now
+ *   simply *is* 56dp, with the disc drawn inside it, which needs no such trust.
+ * - The app runs fullscreen with swipe-to-reveal bars, so these sit on the screen edge where the
+ *   system watches for its own gestures. [systemGestureExclusion] claims the small region back —
+ *   without it a tap that drifts a pixel is read as an edge swipe and the button never fires.
+ * - A landscape phone held two-handed puts these under the very tip of a thumb, at the point where
+ *   accuracy is worst.
+ */
 @Composable
 private fun ControlButton(
     onClick: () -> Unit,
@@ -458,36 +535,36 @@ private fun ControlButton(
 ) {
     Box(
         modifier
-            // The disc is 32dp because that is what reads over the felt; the target is padded to
-            // the 48dp minimum so it can still be hit reliably.
-            .minimumInteractiveComponentSize()
-            .size(32.dp)
-            .background(Color.Black.copy(alpha = 0.3f), CircleShape)
+            .size(CONTROL_TARGET)
+            .systemGestureExclusion()
             .clickable(
                 role = Role.Button,
                 interactionSource = remember { MutableInteractionSource() },
-                indication = null,
+                // A ripple, where the rest of the table's controls draw their own feedback. With no
+                // indication at all a tap that *did* land looks identical to one that didn't, so a
+                // missed press and a slow screen are indistinguishable — and you tap again.
+                indication = ripple(bounded = false, radius = CONTROL_TARGET / 2),
                 onClick = onClick,
             ),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            icon,
-            contentDescription = description,
-            tint = Color.White.copy(alpha = 0.7f),
-            modifier = Modifier.size(18.dp),
-        )
+        Box(
+            Modifier
+                .size(CONTROL_DISC)
+                .background(Color.Black.copy(alpha = 0.3f), CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = description,
+                tint = Color.White.copy(alpha = 0.7f),
+                modifier = Modifier.size(22.dp),
+            )
+        }
     }
 }
 
 // ---- Top band ----
-
-/**
- * How much vertical room the floating top-corner controls need: a 32dp button with a 6dp inset
- * above and the same below. The banner row reserves this, so the scoring panels below it can never
- * collide with the quit, help or settings icons.
- */
-private val TOP_CONTROL_ROW_HEIGHT = 44.dp
 
 @Composable
 private fun TopBand(
@@ -498,6 +575,9 @@ private fun TopBand(
     scoreTrackEnabled: Boolean,
     clearSignal: Int,
     onUncommittedChange: (PlayerID, Int) -> Unit,
+    onQuit: (() -> Unit)?,
+    onOpenHelp: (() -> Unit)?,
+    onOpenSettings: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -505,14 +585,14 @@ private fun TopBand(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        // This row is as tall as the quit / help / settings buttons floating in the band's top
-        // corners (32dp plus their 6dp inset, and the same again below). Reserving that height is
-        // what keeps the scoring panels clear of them: before, the panel began 6dp above where the
-        // icons ended and the gear sat on top of the undo button.
+        // Just the coach line, at the very top of the band. It used to sit in a row tall enough to
+        // reserve space for the floating corner icons, which is where the whitespace above the
+        // scoreboard came from; the icons are on the scoreboard row now and this is back to being
+        // one line of text.
         Box(
             Modifier
                 .fillMaxWidth()
-                .heightIn(min = TOP_CONTROL_ROW_HEIGHT),
+                .heightIn(min = BANNER_ROW_HEIGHT),
             contentAlignment = Alignment.Center,
         ) {
             Text(
@@ -521,10 +601,9 @@ private fun TopBand(
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 style = tightTextStyle(17.sp, FontWeight.Bold),
-                // Clear of the icons horizontally too, so a long coach line doesn't run under them.
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 96.dp),
+                    .padding(horizontal = 16.dp),
             )
         }
 
@@ -532,6 +611,21 @@ private fun TopBand(
         // rail now, so this dark band holds only the coach line and the scoreboard — which is what
         // gives the scores room to be read across a table.
 
+        // Quit on one end, help and settings on the other, level with the scoreboard.
+        //
+        // They were floating in the band's top corners, which put them inside the system's
+        // mandatory top gesture strip — 43dp on the test phone — where presses are arbitrated away.
+        // Insetting them past it worked but pushed the whole band down and cost the cards that
+        // height. Down here they are clear of the strip for free: the scoreboard row starts well
+        // below it, and the band goes back to being as short as its content.
+        Row(
+            Modifier.fillMaxWidth().height(SCORE_PANEL_HEIGHT),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+        if (onQuit != null) {
+            ControlButton(onQuit, "Quit game", Icons.Filled.Close)
+        }
+        Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
         if (s.scoringMode == ScoringMode.AUTO) {
             // Automatic scoring has no manual controls — just names and scores.
             AutoScoreboard(vm, s)
@@ -541,7 +635,8 @@ private fun TopBand(
             Row(
                 Modifier
                     .widthIn(max = 900.dp)
-                    .padding(horizontal = 12.dp),
+                    .fillMaxHeight()
+                    .padding(horizontal = 8.dp),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 for (player in vm.scorablePlayers) {
@@ -572,10 +667,18 @@ private fun TopBand(
                         onUndo = { vm.undo(player) },
                         modifier = Modifier
                             .weight(1f)
-                            .height(92.dp),
+                            .fillMaxHeight(),
                     )
                 }
             }
+        }
+        }
+        if (onOpenHelp != null) {
+            ControlButton(onOpenHelp, "How to play", Icons.AutoMirrored.Filled.HelpOutline)
+        }
+        if (onOpenSettings != null) {
+            ControlButton(onOpenSettings, "Settings", Icons.Filled.Settings)
+        }
         }
     }
 }
@@ -763,6 +866,7 @@ private fun RailFlags(vm: GameViewModel, s: PlayerSnapshot, modifier: Modifier =
  */
 @Composable
 private fun CutForDealArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp, railWidth: Dp) {
+    val feedback = LocalFeedback.current
     PlayScene(
         vm, s, railWidth,
         play = {
@@ -774,12 +878,12 @@ private fun CutForDealArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp, rail
     ) {
         when {
             vm.cutForDealDecided ->
-                if (vm.youDeal) GoldButton("Deal") { vm.advance() }
+                if (vm.youDeal) GoldButton("Deal") { feedback?.play(HapticPatterns.Action.DEAL); vm.advance() }
                 else WaitingLabel("Waiting for ${vm.name(s.dealer)} to deal…")
             vm.youNeedToCut -> Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(6.dp),
-                modifier = Modifier.tappable { vm.cut() },
+                modifier = Modifier.tappable { feedback?.play(HapticPatterns.Action.CUT_TAP); vm.cut() },
             ) {
                 CardView(null, faceUp = false, width = width * 0.85f)
                 Text(
@@ -834,13 +938,14 @@ private fun DiscardArea(
     width: Dp,
     railWidth: Dp,
 ) {
+    val feedback = LocalFeedback.current
     PlayScene(
         vm, s, railWidth,
         play = {
             HandView(
                 cards = s.yourHand.sortedForDisplay(),
                 selected = selected,
-                onTap = { vm.toggleDiscard(it) },
+                onTap = { feedback?.play(HapticPatterns.Action.DISCARD_SELECT); vm.toggleDiscard(it) },
                 cardWidth = width,
                 // Deal the cards in on a fresh hand.
                 dealSignal = s.yourHand.map { it.id },
@@ -849,7 +954,7 @@ private fun DiscardArea(
     ) {
         val whose = if (s.yourSeat == Seat.DEALER) "your crib" else "${vm.name(s.dealer)}'s crib"
         Button(
-            onClick = { vm.confirmDiscard() },
+            onClick = { feedback?.play(HapticPatterns.Action.DISCARD_CONFIRM); vm.confirmDiscard() },
             enabled = vm.canConfirmDiscard,
             colors = ButtonDefaults.buttonColors(
                 containerColor = playerTheme(vm.colorID(s.you)).deep,
@@ -864,6 +969,7 @@ private fun DiscardArea(
 /** The pone lifts the deck, then the dealer turns up the cut — like an in-person cut. */
 @Composable
 private fun StarterCutArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp, railWidth: Dp) {
+    val feedback = LocalFeedback.current
     val lifted = vm.starterCutLifted
     val canTap = vm.youLiftCut || vm.youRevealStarter
     PlayScene(
@@ -876,7 +982,13 @@ private fun StarterCutArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp, rail
                 DeckPile(
                     width, highlighted = canTap,
                     modifier = Modifier.tappable(enabled = canTap) {
-                        if (vm.youLiftCut) vm.liftCut() else if (vm.youRevealStarter) vm.revealStarter()
+                        if (vm.youLiftCut) {
+                            feedback?.play(HapticPatterns.Action.DECK_LIFT)
+                            vm.liftCut()
+                        } else if (vm.youRevealStarter) {
+                            feedback?.play(HapticPatterns.Action.STARTER_REVEAL)
+                            vm.revealStarter()
+                        }
                     },
                 )
                 // The portion the pone lifted off, set aside once the cut is made.
@@ -909,18 +1021,47 @@ private fun StarterCutArea(vm: GameViewModel, s: PlayerSnapshot, width: Dp, rail
 /** A small stack of face-down cards drawn as a deck. */
 @Composable
 private fun DeckPile(width: Dp, highlighted: Boolean, modifier: Modifier = Modifier) {
-    Box(modifier) {
-        for (i in 0 until 4) {
+    // The slow breathing pulse iOS gives a tappable deck: easeInOut over 0.8s, autoreversing.
+    val transition = rememberInfiniteTransition(label = "deck")
+    val pulse by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 1.04f,
+        animationSpec = infiniteRepeatable(
+            tween(800, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse,
+        ),
+        label = "deckPulse",
+    )
+
+    // The box is sized to the *whole* stack, offsets included, rather than to one card with the
+    // rest spilling over the edge. Overflow drew fine on its own but was sliced off the top and
+    // right of the lifted half of the deck, which carries `Modifier.alpha` — an alpha layer clips
+    // to its layout bounds, and the spill was outside them. Sizing it honestly also means the tap
+    // target is the deck you can see.
+    val spread = DECK_STACK_STEP * (DECK_STACK_CARDS - 1)
+    Box(
+        modifier
+            .size(width + spread, width * 1.45f + spread)
+            .scale(if (highlighted) pulse else 1f),
+    ) {
+        for (i in 0 until DECK_STACK_CARDS) {
             CardView(
                 null,
                 faceUp = false,
-                isHighlighted = highlighted && i == 3,
+                isHighlighted = highlighted && i == DECK_STACK_CARDS - 1,
                 width = width,
-                modifier = Modifier.offset(x = (i * 2.5f).dp, y = (i * -2.5f).dp),
+                modifier = Modifier.offset(
+                    x = DECK_STACK_STEP * i,
+                    y = spread - DECK_STACK_STEP * i,
+                ),
             )
         }
     }
 }
+
+/** How the deck is drawn: four cards, each stepped up and to the right of the one below. */
+private const val DECK_STACK_CARDS = 4
+private val DECK_STACK_STEP = 2.5.dp
 
 @Composable
 private fun PeggingArea(
@@ -933,6 +1074,7 @@ private fun PeggingArea(
     commitThenAdvance: () -> Unit,
     isTablet: Boolean,
 ) {
+    val feedback = LocalFeedback.current
     PlayScene(
         vm, s, railWidth,
         play = {
@@ -958,7 +1100,7 @@ private fun PeggingArea(
                         HandView(
                             cards = s.yourHand.sortedForDisplay(),
                             isEnabled = { vm.isLegalPlay(it) },
-                            onTap = { vm.play(it) },
+                            onTap = { feedback?.play(HapticPatterns.Action.CARD_PLAY); vm.play(it) },
                             cardWidth = handWidth,
                         )
                     }
@@ -980,7 +1122,7 @@ private fun PeggingArea(
             }
         } else if (vm.canSayGo) {
             Button(
-                onClick = { vm.sayGo() },
+                onClick = { feedback?.play(HapticPatterns.Action.GO); vm.sayGo() },
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFFE08A2E),
                     contentColor = Color.Black,
@@ -1038,13 +1180,34 @@ private fun ShowArea(
                     } else {
                         Text(vm.showLabel, color = Color.White.copy(alpha = 0.7f), fontSize = 11.sp)
                     }
-                    HandView(
-                        cards = vm.showCards.sortedForDisplay(),
-                        onTap = {},
-                        cardWidth = cardW,
-                        // Re-deals on each show sub-phase, as the Swift does.
-                        dealSignal = s.phase,
-                    )
+                    // The crib counts inside a gold-tinted, gold-stroked panel — the same backing
+                    // iOS draws. With only the badge above them, four cards on felt look like just
+                    // another hand at exactly the moment it matters that they are not.
+                    Box(
+                        if (isCrib) {
+                            Modifier
+                                .background(
+                                    CribGold.copy(alpha = 0.12f),
+                                    RoundedCornerShape(12.dp),
+                                )
+                                .border(
+                                    1.dp,
+                                    CribGold.copy(alpha = 0.55f),
+                                    RoundedCornerShape(12.dp),
+                                )
+                                .padding(5.dp)
+                        } else {
+                            Modifier
+                        },
+                    ) {
+                        HandView(
+                            cards = vm.showCards.sortedForDisplay(),
+                            onTap = {},
+                            cardWidth = cardW,
+                            // Re-deals on each show sub-phase, as the Swift does.
+                            dealSignal = s.phase,
+                        )
+                    }
                 }
             }
         },
@@ -1066,6 +1229,7 @@ private fun ShowArea(
 
 @Composable
 private fun HandCompleteArea(vm: GameViewModel, s: PlayerSnapshot, railWidth: Dp) {
+    val feedback = LocalFeedback.current
     PlayScene(
         vm, s, railWidth,
         play = {
@@ -1087,7 +1251,7 @@ private fun HandCompleteArea(vm: GameViewModel, s: PlayerSnapshot, railWidth: Dp
     ) {
         // The deal passes to the former pone, so only they start the next hand.
         if (vm.youStartNextDeal) {
-            GoldButton("Deal next hand") { vm.advance() }
+            GoldButton("Deal next hand") { feedback?.play(HapticPatterns.Action.DEAL); vm.advance() }
         } else {
             WaitingLabel("Waiting for ${vm.name(vm.nextDealer)} to deal…")
         }

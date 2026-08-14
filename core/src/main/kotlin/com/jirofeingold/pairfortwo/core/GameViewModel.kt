@@ -689,11 +689,28 @@ class GameViewModel private constructor(
 
     fun playAgain() = submit(GameMessage.PlayAgain)
 
-    /** A live name/colour change from Settings, propagated into the running game. */
+    /**
+     * A live name/colour change from Settings, propagated into the running game.
+     *
+     * Deliberately *not* routed through [submit], which attributes a message to the [viewer] — the
+     * player who must act next. That is right for an intent and wrong for an identity: in
+     * pass-and-play the viewer rotates, so renaming yourself from Settings mid-hand renamed
+     * whichever player happened to be on turn, and could leave your own name unchanged while the
+     * opponent took it. Identity always belongs to [fixedPlayer], which in a loopback game is the
+     * player this device set up as itself.
+     */
     fun updateLocalIdentity(name: String, colorID: Int) {
+        if (name == localName && colorID == localColorID) return
         localName = name
         localColorID = colorID
-        submit(GameMessage.UpdateIdentity(name, colorID))
+        if (!isLoopback && _connection.value != ConnectionState.CONNECTED) return
+        val message = GameMessage.UpdateIdentity(name, colorID)
+        if (isHost) {
+            hostApply(message, fixedPlayer)
+            refreshAndBroadcast()
+        } else {
+            scope.launch { transport.send(message) }
+        }
     }
 
     /** A live scoring-mode change from Settings. Either device may set it; it governs both. */

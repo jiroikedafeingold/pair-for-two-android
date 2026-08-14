@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.Canvas
@@ -84,6 +85,15 @@ fun PointsSlider(
         val progress = value.toFloat() / MAX_VALUE
 
         // Latest values, so the long-lived pointerInput doesn't capture stale ones.
+        //
+        // The step size is one of them, and deliberately so. It used to be `pointerInput(usable)`,
+        // which tears the gesture down and rebuilds it whenever the track's width changes — and the
+        // track *does* change width mid-drag, because the +N button beside it grows when its label
+        // goes from "+9" to "+10". Dragging past 10 therefore cancelled the drag every time and the
+        // knob stopped dead until you let go and grabbed it again. Reading the step per event
+        // instead means the gesture survives a resize, whatever causes it.
+        val stepPx = with(LocalDensity.current) { (usable.toPx() / MAX_VALUE).coerceAtLeast(1f) }
+        val currentStep by rememberUpdatedState(stepPx)
         val currentValue by rememberUpdatedState(value)
         val currentChange by rememberUpdatedState(onValueChange)
         val currentCommit by rememberUpdatedState(onCommit)
@@ -102,8 +112,7 @@ fun PointsSlider(
             Modifier
                 .fillMaxSize()
                 .then(
-                    if (!enabled) Modifier else Modifier.pointerInput(usable) {
-                        val stepPx = (usable.toPx() / MAX_VALUE).coerceAtLeast(1f)
+                    if (!enabled) Modifier else Modifier.pointerInput(Unit) {
                         detectDragGestures(
                             onDragStart = {
                                 dragStartValue = currentValue
@@ -118,7 +127,7 @@ fun PointsSlider(
                             onDrag = { change, dragAmount ->
                                 change.consume()
                                 accumulated += dragAmount.x.roundToInt()
-                                val delta = (accumulated / stepPx).roundToInt()
+                                val delta = (accumulated / currentStep).roundToInt()
                                 val next = (dragStartValue + delta).coerceIn(0, MAX_VALUE)
                                 if (next != currentValue) {
                                     currentChange(next)

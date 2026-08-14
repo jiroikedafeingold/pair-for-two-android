@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -122,7 +122,7 @@ fun OnboardingScreen(
         Column(
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing),
+                .windowInsetsPadding(WindowInsets.safeContent),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             Text(
@@ -348,7 +348,7 @@ private fun NameEntry(
             // safeDrawing already includes the IME inset, so with the activity set to adjustResize
             // this shrinks to the strip above the keyboard and the content scrolls inside it. The
             // keyboard's own Go key finishes too, which on a landscape phone is the quicker way.
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .windowInsetsPadding(WindowInsets.safeContent)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 32.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,

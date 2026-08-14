@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
@@ -23,7 +24,6 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -39,6 +39,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -295,7 +296,13 @@ private fun newTransport(
     displayName = displayName,
     discovery = NsdLanDiscovery(context.applicationContext, scope),
     scope = scope,
-)
+).apply {
+    // Debug builds narrate the pairing handshake to logcat. A hosting failure otherwise leaves no
+    // evidence at all — two phones sitting there, and nothing to say whether anything was ever
+    // accepted or on which port. `adb logcat -s PairForTwoLan` while it happens.
+    // `Log.i`, not `Log.d`: the test phone drops debug-level logs from apps entirely.
+    if (BuildConfig.DEBUG) trace = { android.util.Log.i("PairForTwoLan", it) }
+}
 
 /**
  * Build the game for a freshly connected transport.
@@ -353,28 +360,39 @@ private fun Menu(
         modifier.background(Brush.verticalGradient(listOf(FeltMid, FeltDark))),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(
-            Icons.AutoMirrored.Filled.HelpOutline,
-            contentDescription = "How to play",
-            tint = Color.White.copy(alpha = 0.85f),
-            modifier = Modifier
+        // The glyph stays 26dp; the *clickable* is the 56dp box around it, rather than a 26dp one
+        // trusting `minimumInteractiveComponentSize` to feed it out-of-bounds touches. Same reason
+        // the table's chrome buttons were rebuilt — see `ControlButton` in `GameTableScreen`.
+        Box(
+            Modifier
                 .align(Alignment.TopEnd)
-                .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(top = 8.dp, end = 14.dp)
-                // The glyph stays 26dp; the tap target is padded out to the 48dp minimum.
-                .minimumInteractiveComponentSize()
+                // Includes the mandatory gesture strips, not just safeDrawing: the top of the
+                // screen is where the system watches for the swipe that reveals the hidden status
+                // bar, and it wins that argument every time.
+                .windowInsetsPadding(WindowInsets.safeContent)
+                .size(56.dp)
+                // It sits on the screen edge, where the system watches for its own gestures.
+                .systemGestureExclusion()
                 .clickable(
+                    role = Role.Button,
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
                     onClick = onOpenHelp,
-                )
-                .size(26.dp),
-        )
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                Icons.AutoMirrored.Filled.HelpOutline,
+                contentDescription = "How to play",
+                tint = Color.White.copy(alpha = 0.85f),
+                modifier = Modifier.size(26.dp),
+            )
+        }
 
         Column(
             Modifier
                 .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .windowInsetsPadding(WindowInsets.safeContent)
                 .padding(horizontal = 28.dp, vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically),

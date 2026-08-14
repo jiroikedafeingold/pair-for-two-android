@@ -147,11 +147,23 @@ private fun DrawScope.drawSkunkMark(
     val path = trackPath(size, cornerRadius, inset = 5.5.dp.toPx())
     val measure = PathMeasure().apply { setPath(path, false) }
     val point = measure.getPosition(measure.length * fraction)
+
+    // Centre the *ink*, not the text layout, or the mark sits low and to the right of the ring.
+    //
+    // Horizontally: the negative tracking applies after the last glyph too, so the measured width
+    // is a whole letter-space narrower than what is actually drawn, and halving it lands the ink
+    // right of the point. Add the trailing space back before halving.
+    //
+    // Vertically: the layout box is a line box — ascent to descent — and an emoji's ink sits inside
+    // it with more room above than below, so a box centred on the ring draws the skunk under it.
+    // The nudge is a fraction of the glyph size rather than a magic number of pixels, so it holds
+    // if the mark is ever resized.
+    val trailingTracking = SkunkGlyphSize.toPx() * 0.32f
     drawText(
         glyphs,
         topLeft = Offset(
-            point.x - glyphs.size.width / 2f,
-            point.y - glyphs.size.height / 2f,
+            point.x - (glyphs.size.width + trailingTracking) / 2f,
+            point.y - glyphs.size.height / 2f - SkunkGlyphSize.toPx() * 0.12f,
         ),
         alpha = 0.5f,
     )

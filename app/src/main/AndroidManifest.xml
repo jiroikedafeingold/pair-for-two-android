@@ -12,6 +12,13 @@
         drop multicast traffic to save power unless one is held, and discovery then silently finds
         nothing at all.
     -->
+    <!--
+        Haptics. Without this every `Vibrator.vibrate` call is dropped on the floor — no crash, no
+        log, just a game that never buzzes — which is exactly how this went unnoticed: the settings
+        toggle, the degradation ladder and the patterns were all built and none of it could fire.
+    -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -39,8 +46,18 @@
             orientation restrictions *ignored* on large screens (smallest width >= 600dp). So this
             holds on phones and foldables while closed, but a tablet may still rotate to portrait.
         -->
+        <!--
+            Handle the size and posture configs ourselves rather than being recreated.
+
+            Found by folding a Pixel 9 Pro Fold mid-game: unfolding moves the app to the other
+            display, Android recreates the activity, and the running game — held in composition —
+            goes with it, dropping both players back to the menu. Compose re-reads the configuration
+            reactively and every layout here is computed from `BoxWithConstraints`, so a resize
+            needs no new resources; being recreated bought nothing and cost the game.
+        -->
         <activity
             android:name=".MainActivity"
+            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation|density"
             android:exported="true"
             android:label="@string/app_name"
             android:screenOrientation="sensorLandscape"

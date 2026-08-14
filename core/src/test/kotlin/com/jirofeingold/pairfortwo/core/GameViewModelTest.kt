@@ -149,6 +149,22 @@ class GameViewModelTest {
     }
 
     @Test
+    fun `renaming yourself mid-hand renames you, not whoever is on turn`() = runBlocking {
+        val vm = loopback(ScoringMode.OFF)
+        vm.cut(); vm.cut(); vm.advance()
+        val hand = vm.snapshot.value.yourHand
+        vm.toggleDiscard(hand[0]); vm.toggleDiscard(hand[1]); vm.confirmDiscard()
+        // The view has passed to the other player, which is exactly when this used to go wrong.
+        assertEquals(PlayerID.TWO, vm.viewer)
+
+        vm.updateLocalIdentity("Renamed", colorID = 4)
+
+        assertEquals("Renamed", vm.name(PlayerID.ONE), "the local player takes the new name")
+        assertEquals(4, vm.colorID(PlayerID.ONE))
+        assertEquals("Bo", vm.name(PlayerID.TWO), "and the opponent keeps theirs")
+    }
+
+    @Test
     fun `a pending discard selection is cleared when the view passes to the other player`() = runBlocking {
         val vm = loopback(ScoringMode.OFF)
         vm.cut(); vm.cut(); vm.advance()

@@ -243,6 +243,57 @@ Carry over the behaviours `MultipeerSession` learned the hard way — they are n
 - **Deterministic single-inviter rule** so both sides don't race two half-open connections.
 - **Ghost-peer collapsing by display name** in the discovery list.
 
+### 4.2.1 A hosting deadlock, found in a real game
+
+Reported as: the Android host stuck on "Waiting for a player to join…", the iOS guest stuck on
+"Connecting…". Two independent faults, both in `LanTransport`, either enough on its own:
+
+- **`startHosting()` was not idempotent.** The listener takes an *ephemeral* port and advertises it,
+  so calling it again moved the port. A guest that had already resolved the first advertisement then
+  dialled a port nobody was listening on — no refusal it could act on, so it waited. The trigger is
+  nothing exotic: a second tap on "Host a game", which this app made likely, since its buttons were
+  hard to press until the inset work above. `startBrowsing()` had the same shape and got the same
+  guard. Covered by a `:core` test that fails without the fix.
+- **The listener took a fresh ephemeral port every time it restarted.** This is the one that was
+  still biting after the first two fixes, and the device trace showed it in three lines:
+
+  ```
+  14:31:15.798  accepted 192.168.68.63
+  14:31:15.800  paired with 192.168.68.63:59346
+  14:31:15.967  hosting: listening on 33109 ...      <- 167ms later, a *different* port
+  ```
+
+  Any drop sends the host back to listening, and it came back on a new port while the guest was
+  still dialling the one it had resolved. Nothing is listening there, the guest gets no refusal it
+  can act on, and both sides wait. The port is now chosen once and kept for the life of the
+  transport (`reuseAddress`, since the old socket is in TIME_WAIT), falling back to a fresh one only
+  if the port is genuinely taken. Covered by a `:core` test, and confirmed on the phone: the same
+  43983 before and after a drop.
+
+- **The accept job accepted exactly once and then returned.** Any connection the host declined — a
+  straggler, or one arriving between listener generations — ended it, and the *next* connection was
+  never accepted at all. It still completes at the TCP level, because the kernel finishes the
+  handshake into the backlog, so the guest believes it is connected and waits for a reply from an
+  app that has stopped listening. `NWConnection` makes that likely rather than theoretical: Bonjour
+  resolves to both IPv6 and IPv4 and Network.framework races them, so the host can be handed a
+  connection the guest is about to abandon. It now keeps accepting until one sticks, and fails
+  loudly rather than advertising a port nothing is reading.
+
+`tools/run-lan-interop.sh` passed throughout — the happy path was never the problem, which is
+worth remembering about that harness: it proves the protocol and the framing, not the races, and it
+runs over loopback where none of this happens.
+
+**`LanTransport.trace`** exists because of this hunt: a hosting failure in the field otherwise
+leaves no evidence at all. `:core` has no Android dependency, so it is a lambda the app points at
+logcat in debug builds — `adb logcat -s PairForTwoLan`. Note `Log.i`, not `Log.d`: the test phone
+drops app debug logs entirely, which cost an hour on its own.
+
+**A warning for the next person who tries to reproduce this on a Mac.** Network.framework in an
+unbundled command-line binary is blocked from the local network by macOS's privacy controls — every
+connection reports `waiting: Network is down`, including to an IP that `nc` reaches happily. The
+Swift harness only works because it pairs over loopback. Reproducing an iOS↔Android pairing bug
+needs a real iOS build, or the Android trace above.
+
 ### 4.2 Android — `LanTransport`
 
 - **Service type: `_pairfortwo-lan._tcp`**, not `_pairfortwo._tcp` as originally written here.
@@ -332,6 +383,28 @@ Mapping strategy for the eleven `GameFeedback.Action` cases plus win/lose/slider
   this on the waveform path, and `createWaveform` has no composition-length cap — 7 s at the
   renderer's 10 ms step is 700 entries.
 
+### 5.3 Why none of it was firing
+
+Reported from a real phone as "I'm not feeling any haptics", and it turned out to be two faults
+stacked, either of which alone would have been enough:
+
+1. **The app never declared `android.permission.VIBRATE`.** Without it every `Vibrator.vibrate` call
+   is dropped — no crash, no log line — so the patterns, the renderer and the degradation ladder
+   were all correct and none of it could reach the motor. `dumpsys package` showed the permission
+   simply absent; `dumpsys vibrator_manager` showed not one vibration ever attributed to the app.
+2. **The table only ever called `GameFeedback` for scoring and the win.** Cut, deal, discard,
+   card play, go, the starter reveal and Continue had no call site at all — the wiring note in this
+   plan was ticked off before the actions were connected. They are now, through a `LocalFeedback`
+   composition local, because each phase's play area is a private composable several levels down.
+
+Two smaller things came out of the same session: 31 is felt via a `LaunchedEffect` on the running
+count, since it falls out of the count and has no button to hang off; and every effect is now played
+with `VibrationAttributes.USAGE_TOUCH`, because an unattributed vibration is filed under
+`USAGE_UNKNOWN` and the per-usage intensity sliders can scale it to nothing.
+
+Verified on the device, not by eye: `dumpsys vibrator_manager` records the cut tap as
+`usage: TOUCH | com.jirofeingold.pairfortwo | played: [Step=0ms…Step=120ms(amplitude=1.00)…]`.
+
 Files: `feel/SoundEffects.kt`, `feel/HapticsController.kt`, `feel/GameFeedback.kt`
 (the unified `play(action)` entry point matching iOS).
 
@@ -397,9 +470,96 @@ Android specifics to get right:
   declares `progressBarRangeInfo` and a `setProgress` action, so TalkBack can both read and set the
   staged points; the +1 button carries a click label that says which of its two jobs it will do; and
   the panel has one spoken summary instead of a pile of unlabelled shapes. Touch targets under 48dp
-  (the table's chrome discs, undo, the colour swatches, the menu's help glyph) keep their drawn size
-  and gain a legal target via `minimumInteractiveComponentSize()`.
-- **Foldables — not done.** There is no foldable AVD on this machine, so no posture was tested.
+  (undo, the colour swatches) keep their drawn size and gain a legal target via
+  `minimumInteractiveComponentSize()`.
+- **Every edge-anchored control uses `WindowInsets.safeContent`**, not `safeDrawing`. `safeContent`
+  is `safeDrawing` plus the gesture strips, which is exactly the difference between "not drawn
+  under something" and "reliably touchable". Swept after the connect screen's Back turned out to
+  have the same fault as the table's chrome: Back on the connect screen, Skip and Continue in the
+  onboarding tour, the scoring replay's buttons, the menu's help glyph, and the Settings and Help
+  app bars. The table is the one exception and does it by hand — see below — because padding the
+  whole screen there costs 43dp of card height.
+
+- **Chrome buttons — the real fix was *where*, not how big.** Quit, help and settings were hard to
+  press, and two rounds of enlarging them didn't help. They are now a 40dp disc inside a real 56dp
+  clickable (26dp glyph in 56dp on the menu) rather than a drawn-size clickable leaning on
+  `minimumInteractiveComponentSize()`'s out-of-bounds interception — but that was not the problem.
+
+  `dumpsys window` on the test phone gave the answer. In landscape it reports
+  `mandatorySystemGestures` of **70px (43dp) along the top** — swipe down for the hidden status bar
+  — and **78px (48dp) down the right**, the navigation bar's edge. Help and settings sat entirely
+  inside the right strip and all three sat inside the top one. *Mandatory* means exactly that:
+  `systemGestureExclusion()` is ignored there, so every press was arbitrated against a system
+  gesture and a thumb that moved a pixel lost. The controls are now inset past
+  `WindowInsets.mandatorySystemGestures` — and so are the Settings and Help back arrows and the
+  menu's help glyph, which sat in the same top strip and were reported as hard to leave by.
+
+  **Where they ended up: on the scoreboard row.** Two attempts came first and both cost height.
+  Floating them in the band's corners and insetting them past the strip pushed the whole band down
+  by 43dp; reserving a taller first row for them instead kept the band in place but spent the same
+  height on whitespace above the scoreboard. They now sit *in* the band, level with the score
+  panels — quit at one end, help and settings at the other. That row starts well below the gesture
+  strip anyway, so the controls are clear of it for nothing, and the band is back to being as short
+  as its content: one line of coach banner, then the scoreboard.
+
+  The band's height is now stated as [TOP_BAND_HEIGHT] rather than taken as 42% of the screen, and
+  the play area's budget follows it. On the test phone that is 142dp instead of 186dp — 44dp
+  straight into the cards.
+  They also gained a ripple — with no indication at all, a press that landed looked identical to
+  one that didn't, which is its own reason to press again.
+
+  **Deliberate divergence from iOS's 32pt discs** — see `ControlButton` in `GameTableScreen.kt`.
+- **The skunk markers on the score track sit *on* the ring now.** They are drawn at 60 and 90
+  points round the panel's edge, and were centred on the text layout rather than on the ink: the
+  negative tracking that overlaps a pair applies after the last glyph too, so the measured width is
+  a letter-space short and halving it pushed the mark right of the line. The score track also moved
+  outside the panel's rounded clip, because a mark that straddles the ring had its top half sliced
+  off at the panel edge — which is what made the double skunk read as sitting under the line.
+
+- **Horizontal insets are applied symmetrically.** The test phone's selfie camera puts a 47dp cutout
+  inset on the left and nothing on the right, so padding each side by its own inset shunted the
+  whole scoreboard 47dp right — visibly off-centre on a symmetric composition. Both sides now take
+  the larger inset, which costs a little felt on the clear side and keeps the table centred on the
+  screen. Vertical insets are still per-side; only the horizontal pair is a visual axis.
+- **The pegging hand was budgeted wrong.** Its cards came out of the discard hand's width — a
+  six-card fan — despite pegging never holding more than four, and its vertical budget reserved
+  44dp at a 2.15 ratio for a stack that is really a label row, a pile card, an 8dp gap and the
+  hand. Rebudgeted from those parts, with the pile down from half the hand card to a third since
+  it is the secondary element. On the test phone the pegging cards went from 99×143dp to 110×160dp.
+
+- **Four table details, from playing it on the phone rather than reading the Swift.**
+  - The **deck was clipped** on the lifted half of the starter cut. `DeckPile` sized itself to one
+    card and let the other three spill outside its bounds; that draws fine on its own, but the
+    lifted half carries `Modifier.alpha`, and an alpha layer clips to its layout bounds — so the
+    top and right of the stack were sliced off. The pile is sized to its whole footprint now, which
+    also makes the tap target the deck you can actually see.
+  - The **deck's pulse was missing.** iOS breathes a tappable deck at 1.04x on a repeating 0.8s
+    ease-in-out; ported. Verified by frame-grabbing the device rather than by eye — the pile's
+    bounding box swings 183→191px.
+  - The **crib stack drew all four cards**, stepping 3dp down and right each time, which pushed it
+    into the hand below once the play area got taller. It draws two now: it is an indicator that a
+    crib exists, not a count. **Deliberate divergence from iOS.**
+  - The **crib's gold backing at the show was never ported** — only the badge above it was. iOS
+    wraps the crib's cards in a gold-tinted, gold-stroked panel so it is obvious the crib is being
+    counted and not another hand, which is exactly the moment that distinction matters.
+
+- **Foldables — tested.** A `pft_fold_36` AVD (Pixel 9 Pro Fold, API 36.1) now exists; both postures
+  were exercised.
+  - **Folded** — the 994×443dp cover panel. The landscape lock holds, and the menu, table and chrome
+    read exactly as on a phone. This is the posture the layout was designed for.
+  - **Unfolded** — the 851×883dp inner panel. **The landscape lock is ignored**, precisely as this
+    plan predicted for SDK 36 at sw ≥ 600dp, so the app presents portrait. Nothing clips or breaks:
+    the near-square screen means the table still lays out and plays, with the scoring band across
+    the top and the action rail down the side. It is simply loose — a wide empty middle where a
+    landscape phone has cards. Making the table *good* on a near-square screen is a layout question
+    in its own right and has not been attempted.
+  - **A posture change used to end the game.** `MainActivity` declared no `configChanges`, so
+    unfolding moved the app to the other display, Android recreated the activity, and the running
+    game — which `RootScaffold` holds in composition — went with it: both players dropped back to
+    the menu. The manifest now handles `screenSize|smallestScreenSize|screenLayout|orientation|
+    density` itself. Verified by watching the `ActivityRecord` identity across a fold and an unfold:
+    the same instance survives both, where before the fold restarted it. Worth knowing this was
+    never foldable-specific — any config change that recreates the activity would have done it.
 
 ### 6.1 Keeping up with iOS
 
@@ -538,10 +698,10 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **2** | **`PROTOCOL.md` + DTO layer on both sides + golden round-trip tests + iOS dual-format compat (§2.1)** | medium | ✅ done |
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
-| **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done (untested on hardware) |
+| **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done, and now actually verified on hardware — it had never once fired, see §5.3 |
 | **6** | UI — game table first (the bulk), then overlays, then chrome | large | ✅ done — table (level with iOS `89adb97`, §6.1), overlays, Settings, menu, connect, help, onboarding and the scoring replay. **Check-my-count is the one iOS screen with no Android counterpart**; it is a small overlay over the show, not a screen in its own right |
 | **7** | Persistence, resume, lifecycle | medium | ✅ done — settings, saved game, resume marker and the foreground/background hooks (§7). Untested across two devices, which is the same gap as phase 4. |
-| **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | ✅ done bar foldables — see §8.1 |
+| **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | ✅ done, foldables included — see §8.1. Open: the table is *usable* but loose on a near-square unfolded screen, and real tablet hardware still hasn't confirmed the orientation behaviour |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | code side done (icon, splash, signing config); the rest needs a Play Console account — see `RELEASE.md` |
 
 Phases 2 and 4 are where this project succeeds or fails. Phase 6 is the most *hours* but

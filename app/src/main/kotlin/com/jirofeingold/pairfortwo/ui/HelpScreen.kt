@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.mandatorySystemGestures
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.safeContent
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
@@ -89,9 +93,14 @@ fun HelpScreen(
 
     Scaffold(
         modifier = modifier,
-        contentWindowInsets = WindowInsets.safeDrawing,
+        contentWindowInsets = WindowInsets.safeContent,
         topBar = {
             TopAppBar(
+                // Pushed clear of the system's *mandatory* gesture strips — the top one is where
+                // the swipe for the hidden status bar lives, and a back arrow sitting in it loses
+                // presses to gesture arbitration. Same reason the table's corner controls moved.
+                windowInsets = WindowInsets.safeContent
+                    .only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal),
                 title = { Text("How to play") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {

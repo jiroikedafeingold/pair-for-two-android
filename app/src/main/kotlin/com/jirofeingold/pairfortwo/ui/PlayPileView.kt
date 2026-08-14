@@ -192,6 +192,9 @@ private fun LapDivider(cardWidth: Dp) {
     )
 }
 
+/** How many face-down cards stand in for the crib. Fewer than iOS draws, deliberately. */
+private const val CRIB_STACK_CARDS = 2
+
 @Composable
 private fun CribStack(snapshot: PlayerSnapshot, cardWidth: Dp) {
     Column(
@@ -208,7 +211,10 @@ private fun CribStack(snapshot: PlayerSnapshot, cardWidth: Dp) {
                     for (card in crib) CardView(card, width = cardWidth)
                 }
             } else {
-                for (i in 0 until maxOf(snapshot.cribCount, 1)) {
+                // Two cards, however many are really in there. The stack steps down and right, so
+                // drawing all four pushed it into the hand below; this is an indicator that the
+                // crib exists, not a count — the badge at the show is what names it.
+                for (i in 0 until snapshot.cribCount.coerceIn(1, CRIB_STACK_CARDS)) {
                     CardView(
                         null,
                         faceUp = false,

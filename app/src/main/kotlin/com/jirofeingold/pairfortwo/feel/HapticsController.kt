@@ -2,6 +2,8 @@ package com.jirofeingold.pairfortwo.feel
 
 import android.content.Context
 import android.os.Build
+import android.media.AudioAttributes
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -97,6 +99,30 @@ class HapticsController(context: Context) {
     /** @param progress 0…1 position of the value along the points slider. */
     fun tick(progress: Double) = play(HapticPatterns.sliderTick(progress))
 
+
+    /**
+     * Every effect is played as [VibrationAttributes.USAGE_TOUCH].
+     *
+     * Without attributes the platform files a vibration under `USAGE_UNKNOWN`, which is not just
+     * untidy: the per-usage intensity sliders in Settings and some OEM power-saving rules key off
+     * it, so an unattributed buzz can be scaled to nothing on a device where touch feedback is
+     * perfectly well enabled. Below API 33 the same thing is said with `AudioAttributes`.
+     */
+    private fun Vibrator.play(effect: VibrationEffect) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            vibrate(effect, VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrate(
+                effect,
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANCE_SONIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build(),
+            )
+        }
+    }
+
     fun cancel() {
         runCatching { vibrator?.cancel() }
     }
@@ -115,7 +141,7 @@ class HapticsController(context: Context) {
                     for (step in steps) {
                         composition.addPrimitive(step.primitive.toAndroid(), step.scale, step.delayMs)
                     }
-                    v.vibrate(composition.compose())
+                    v.play(composition.compose())
                 }.onSuccess { return }
             }
         }
@@ -124,13 +150,13 @@ class HapticsController(context: Context) {
             val waveform = HapticRenderer.toWaveform(pattern)
             if (waveform != null) {
                 runCatching {
-                    v.vibrate(VibrationEffect.createWaveform(waveform.timings, waveform.amplitudes, -1))
+                    v.play(VibrationEffect.createWaveform(waveform.timings, waveform.amplitudes, -1))
                 }.onSuccess { return }
             }
         }
 
         val timings = HapticRenderer.toOnOffTimings(pattern) ?: return
-        runCatching { v.vibrate(VibrationEffect.createWaveform(timings, -1)) }
+        runCatching { v.play(VibrationEffect.createWaveform(timings, -1)) }
     }
 
     private fun HapticRenderer.Primitive.toAndroid(): Int = when (this) {

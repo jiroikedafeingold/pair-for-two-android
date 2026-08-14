@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -130,6 +131,13 @@ fun ScorePanel(
             .semantics(mergeDescendants = false) {
                 contentDescription = "$name, $score points. Opponent $opponentScore."
             }
+    ) {
+      // The panel's own surface, clipped. The score track is deliberately *outside* this clip: its
+      // skunk markers straddle the ring, and inside the clip their top halves were sliced off at the
+      // panel edge, which read as two skunks sitting under the line rather than on it.
+      Box(
+        Modifier
+            .fillMaxSize()
             .clip(RoundedCornerShape(22.dp))
             .background(
                 Brush.linearGradient(
@@ -137,7 +145,7 @@ fun ScorePanel(
                 ),
             )
             .border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(22.dp)),
-    ) {
+      ) {
         // The live readout, behind the controls: your score in your colour, theirs in theirs.
         ScoreReadout(
             score, opponentScore, primary, opponentColor, opponentPending,
@@ -204,6 +212,7 @@ fun ScorePanel(
                 },
             )
         }
+      }
 
         if (showScoreTrack) {
             ScoreTrackOverlay(
@@ -275,7 +284,12 @@ private fun PlusButton(
         Modifier
             .scale(scale)
             .alpha(if (enabled) 1f else 0.4f)
-            .defaultMinSize(minWidth = 56.dp, minHeight = 44.dp)
+            // Fixed width, not a minimum: the label runs "+1" … "+29", and letting the button size
+            // to its text made the whole row reflow the moment the number reached two digits — the
+            // slider beside it visibly narrowed mid-drag. Wide enough for the longest label there
+            // is, so the layout never moves while a thumb is on the track.
+            .width(68.dp)
+            .defaultMinSize(minHeight = 44.dp)
             .background(primary.copy(alpha = if (highlighted) 0.42f else 0.16f), CircleShape)
             .border(
                 width = if (highlighted) 1.6.dp else 1.dp,
