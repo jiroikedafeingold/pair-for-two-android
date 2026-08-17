@@ -354,6 +354,15 @@ ding, chime, go, firework) with deterministic noise, so they're identical every 
 - `SoundPool`, `maxStreams = 8`, `USAGE_GAME` / `CONTENT_TYPE_SONIFICATION`.
 - Celebration volley: the same 14 pops with randomised rate `0.88–1.22` and volume
   `0.65–1.0`. `SoundPool.play()` takes both, so this ports exactly.
+- **The bottom rung of the ladder was inaudible, and that is most of the fault of "no haptics".**
+  The test phone's vibrator reports `capabilities = []` — no amplitude control, no primitives — so
+  every effect falls to raw on/off timings. Two things were wrong there: a transient became a 20ms
+  pulse, which a rotating-mass motor cannot even spin up for, and anything below half amplitude was
+  thresholded to *silence* rather than to a light buzz. The symptom was maddening precisely because
+  `dumpsys vibrator_manager` showed the effects playing. Pulses now have a 45ms floor, gaps between
+  them 25ms, and the on threshold is ~0.12. Tuned for a motor, not a Taptic Engine — that rung is
+  only reached on devices that have one.
+
 - **Deliberate divergence:** iOS uses an `.ambient` session, so the mute switch silences
   effects. Android has no mute switch and games conventionally play through the game
   stream, so only the in-app "Sound effects" toggle gates playback. Same call StarBattle
@@ -521,6 +530,11 @@ Android specifics to get right:
   whole scoreboard 47dp right — visibly off-centre on a symmetric composition. Both sides now take
   the larger inset, which costs a little felt on the clear side and keeps the table centred on the
   screen. Vertical insets are still per-side; only the horizontal pair is a visual axis.
+- **The rail reserves the action's share before the flags get theirs, and scrolls if even that is
+  not enough.** A `Column` lays overflow out past its own bounds rather than shrinking, so on a
+  short landscape phone the last child — the Check pill — simply ended up off the felt. iOS
+  subtracts its `railActionHeight` the same way.
+
 - **The show row was budgeted for five cards but needs 5.54 of them.** `HandView` spaces cards by
   0.18x their width, and a `Row` hands the shortfall to its *last* child — so the fifth card came out
   visibly narrower than the other four. Reported from real play, and the budget now counts the gaps.

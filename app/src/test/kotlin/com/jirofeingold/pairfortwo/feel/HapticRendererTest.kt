@@ -22,6 +22,36 @@ class HapticRendererTest {
     // ---- Strategy selection ----
 
     @Test
+    fun `on-off timings are long enough for a motor with no amplitude control`() {
+        // A single crisp iOS transient — 20ms wide — which is what most of the game's taps are.
+        val tap = HapticPattern(listOf(HapticEvent.Transient(time = 0.0, intensity = 0.9f, sharpness = 0.9f)))
+
+        val timings = HapticRenderer.toOnOffTimings(tap)
+
+        // This rung is only reached on a vibrator with no amplitude control — a rotating-mass motor,
+        // which needs tens of milliseconds to spin up. Emitting the Taptic-Engine timing verbatim
+        // produced a 20ms pulse: the vibrator log showed the effect playing and the phone in your
+        // hand did nothing.
+        assertNotNull(timings)
+        val ons = timings!!.filterIndexed { i, _ -> i % 2 == 1 }
+        assertTrue(ons.isNotEmpty(), "the tap produced no pulse at all")
+        assertTrue(ons.all { it >= 45L }, "pulses too short to feel: ${ons.toList()}")
+    }
+
+    @Test
+    fun `a quiet event still buzzes rather than being dropped`() {
+        // Half amplitude used to be the on/off threshold, so anything gentler became silence
+        // instead of a light buzz. With no amplitude control the only choice is on or off, and a
+        // short buzz represents "quiet" far better than nothing does.
+        val gentle = HapticPattern(listOf(HapticEvent.Transient(time = 0.0, intensity = 0.25f, sharpness = 0.3f)))
+
+        val timings = HapticRenderer.toOnOffTimings(gentle)
+
+        assertNotNull(timings, "a quiet tap fell out entirely")
+        assertTrue(timings!!.filterIndexed { i, _ -> i % 2 == 1 }.any { it > 0 })
+    }
+
+    @Test
     fun `an all-transient pattern becomes a composition`() {
         val pattern = HapticPatterns.forAction(HapticPatterns.Action.GO)
         val steps = HapticRenderer.toComposition(pattern)

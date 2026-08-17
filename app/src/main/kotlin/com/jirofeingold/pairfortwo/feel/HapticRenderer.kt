@@ -26,6 +26,18 @@ object HapticRenderer {
     /** Timeline resolution. 10 ms is fine enough for the curves here and keeps arrays small. */
     const val STEP_MS = 10
 
+    /**
+     * On/off rung only: how loud a step has to be to count as "on", and how long a pulse and the
+     * gap between two pulses must last to be felt.
+     *
+     * The threshold was half amplitude, which silently dropped every gentle event — the slider
+     * ticks, the light taps — instead of weakening them. With no amplitude control the only choice
+     * is on or off, so quiet is better represented by a short buzz than by nothing.
+     */
+    private const val ON_THRESHOLD = 31          // ~0.12 of full scale
+    private const val MIN_ON_MS = 45L
+    private const val MIN_GAP_MS = 25L
+
     /** Android's composition primitives, named so this file needn't import the Android SDK. */
     enum class Primitive { CLICK, TICK, LOW_TICK, THUD, QUICK_RISE }
 
@@ -132,21 +144,39 @@ object HapticRenderer {
      */
     fun toOnOffTimings(pattern: HapticPattern): LongArray? {
         val waveform = toWaveform(pattern) ?: return null
-        val on = waveform.amplitudes.map { it >= 128 }
+        val on = waveform.amplitudes.map { it >= ON_THRESHOLD }
 
-        val timings = mutableListOf<Long>()
-        var current = false   // waveform timings always start with an "off" entry by convention
+        // Runs of equal value, starting with an "off" entry by convention.
+        val runs = mutableListOf<Pair<Boolean, Long>>()
+        var current = false
         var run = 0L
         for (value in on) {
             if (value == current) {
                 run += STEP_MS
             } else {
-                timings += run
+                runs += current to run
                 current = value
                 run = STEP_MS.toLong()
             }
         }
-        timings += run
+        runs += current to run
+
+        // Stretch anything too short to be felt. This rung is reached only on a device with no
+        // amplitude control — a rotating-mass motor — and such a motor needs tens of milliseconds
+        // to spin up at all. The patterns are written for a Taptic Engine, where a 20ms transient
+        // is a crisp tap; played on/off at 20ms it is silence, which is exactly how this presented:
+        // the vibrator log showed effects playing and the phone in your hand did nothing.
+        val timings = mutableListOf<Long>()
+        for ((index, entry) in runs.withIndex()) {
+            val (isOn, ms) = entry
+            timings += when {
+                isOn -> maxOf(ms, MIN_ON_MS)
+                // A gap only needs widening if it separates two pulses; leading and trailing
+                // silence can stay as it is.
+                index > 0 && index < runs.size - 1 -> maxOf(ms, MIN_GAP_MS)
+                else -> ms
+            }
+        }
         return if (timings.size <= 1) null else timings.toLongArray()
     }
 }

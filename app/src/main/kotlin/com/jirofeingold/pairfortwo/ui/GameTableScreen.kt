@@ -1023,10 +1023,16 @@ private fun PlayScene(
             contentAlignment = Alignment.Center,
         ) { play() }
 
-        Column(
+        // BoxWithConstraints, so the flags slot can be sized against the rail's *actual* height —
+        // see below.
+        BoxWithConstraints(
             Modifier
                 .width(railWidth)
                 .fillMaxHeight(),
+        ) {
+        val railHeight = maxHeight
+        Column(
+            Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // The flag band is always reserved, flags or not, so the prompt and button below it sit
@@ -1042,24 +1048,44 @@ private fun PlayScene(
             // made in 592343f. Within one of those phases the height is constant, so the prompt and
             // button below never shift as flags come and go.
             if (s.phase.surfacesScoreFlags || s.flags.isNotEmpty()) {
-                Box(Modifier.height(FLAG_BAND_HEIGHT)) {
+                // The action's share is reserved *first*. On a short landscape phone the rail has
+                // barely 200dp, and a fixed 96dp of flags plus a prompt, a button and the Check
+                // pill does not fit — a Column lays its overflow out past its own bounds, so the
+                // last child simply ends up off the felt. iOS subtracts the same way.
+                Box(
+                    Modifier.height(
+                        minOf(FLAG_BAND_HEIGHT, (railHeight - RAIL_ACTION_HEIGHT).coerceAtLeast(0.dp)),
+                    ),
+                ) {
                     RailFlags(vm, s, Modifier.align(Alignment.TopCenter))
                 }
             }
             Column(
                 Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    // And if even that isn't enough — a long prompt, a two-line button, a big
+                    // accessibility font — the column scrolls rather than pushing its last child
+                    // (the Check pill) off the bottom where nothing can reach it.
+                    .verticalScroll(rememberScrollState()),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
                 content = action,
             )
+        }
         }
     }
 }
 
 /** The rail's reserved height for scoring flags — iOS's 96pt cap on the same column. */
 private val FLAG_BAND_HEIGHT = 96.dp
+
+/**
+ * What the prompt and primary button need at the bottom of the rail — iOS's `railActionHeight`.
+ * Subtracted from the rail before the flags get their slot, so the button and the Check pill keep
+ * their room on a short screen and the flags give way instead.
+ */
+private val RAIL_ACTION_HEIGHT = 108.dp
 
 /**
  * The scoring flags for the current context, as a column pinned to the top of the rail.
