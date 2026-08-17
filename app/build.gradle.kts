@@ -39,8 +39,8 @@ android {
         // Bumped on every push, per the project convention: versionCode is the build number,
         // versionName gets a patch bump by default. versionCode must increase for every
         // artifact uploaded to Play and can never be reused.
-        versionCode = 2
-        versionName = "0.1.1"
+        versionCode = 3
+        versionName = "0.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 

@@ -7,6 +7,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
@@ -20,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.tooling.preview.Preview
@@ -50,6 +55,11 @@ fun HandView(
     isEnabled: (Card) -> Boolean = { true },
     cardWidth: Dp = 74.dp,
     dealSignal: Any? = null,
+    /**
+     * An optional colour tag under a card — the crib uses it to mark who discarded each card, which
+     * is the only place at the show where whose card it was still matters.
+     */
+    marker: (Card) -> Color? = { null },
 ) {
     var revealed by remember { mutableIntStateOf(0) }
 
@@ -69,6 +79,7 @@ fun HandView(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         cards.forEachIndexed { idx, card ->
+            val tag = marker(card)
             val shown = dealSignal == null || idx < revealed
             // The deal-in: each card drops from above, slightly rotated, alternating direction.
             val progress by animateFloatAsState(
@@ -77,6 +88,12 @@ fun HandView(
                 label = "dealIn",
             )
             val enabled = isEnabled(card)
+            // The marker sits under the card rather than on it: the faces are already busy, and at
+            // the show the crib's four cards are the only place ownership is worth reading.
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
             CardView(
                 card = card,
                 isSelected = card in selected,
@@ -100,6 +117,15 @@ fun HandView(
                         indication = null,
                     ) { onTap(card) },
             )
+                if (tag != null) {
+                    Box(
+                        Modifier
+                            .graphicsLayer { alpha = progress }
+                            .size(width = cardWidth * 0.5f, height = 4.dp)
+                            .background(tag, RoundedCornerShape(2.dp)),
+                    )
+                }
+            }
         }
     }
 }

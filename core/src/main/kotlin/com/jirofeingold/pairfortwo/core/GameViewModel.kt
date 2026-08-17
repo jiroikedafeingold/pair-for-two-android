@@ -573,6 +573,12 @@ class GameViewModel private constructor(
 
     val checkScoreTotal: Int get() = checkScoreFlags.totalPoints
 
+    /**
+     * Which player discarded a given crib card, so the crib row can mark each card with its owner's
+     * colour. Null when unknown — a game resumed from a build that didn't record it.
+     */
+    fun cribOwner(of: Card): PlayerID? = snap.cribOwners?.get(of)
+
     /** The finished game's scoring history, driving the win-screen replay. Empty until game over. */
     val scoreLog: List<Claim> get() = snap.scoreLog
 

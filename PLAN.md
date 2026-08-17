@@ -521,6 +521,10 @@ Android specifics to get right:
   whole scoreboard 47dp right — visibly off-centre on a symmetric composition. Both sides now take
   the larger inset, which costs a little felt on the clear side and keeps the table centred on the
   screen. Vertical insets are still per-side; only the horizontal pair is a visual axis.
+- **The show row was budgeted for five cards but needs 5.54 of them.** `HandView` spaces cards by
+  0.18x their width, and a `Row` hands the shortfall to its *last* child — so the fifth card came out
+  visibly narrower than the other four. Reported from real play, and the budget now counts the gaps.
+
 - **The pegging hand was budgeted wrong.** Its cards came out of the discard hand's width — a
   six-card fan — despite pegging never holding more than four, and its vertical budget reserved
   44dp at a 2.15 ratio for a stack that is really a label row, a pile card, an 8dp gap and the
@@ -566,7 +570,27 @@ Android specifics to get right:
 The iOS app does not stand still while this port is built, so the Android side records **which iOS
 commit it is level with** rather than pretending the two were written at once.
 
-**Level with iOS `89adb97` (2 August 2026).** iOS shipped 1.5 and then reworked the table across
+**Level with iOS `6e5887d` (15 August 2026).** Everything portable from 1.6 is in:
+
+- **`lastCard` peg event** — the hand's final card now notifies *both* devices. This was not
+  optional: Kotlin's `PegEvent.Kind` had no such case, and an unknown enum value is a hard decode
+  failure, so a snapshot from an iOS 1.6 host took the whole Android game down. The engine fixture
+  corpus was regenerated from the new Swift referee (1291 last-card events, up from 183) and Android
+  replays all 151 scripts identically.
+- **`cribOwners`** — who discarded each crib card, so the crib is marked in each owner's colour at
+  the show. Wire form is an array sorted by rank then suit, since a `Card` can't be a JSON key.
+- **Rail: the flags slot is only reserved where flags can appear** (`GamePhase.surfacesScoreFlags`),
+  which stops the tall "tap to cut" card being pushed off the bottom, and long button labels wrap
+  rather than truncate.
+- **The standing "count it on your slider" prompt disappears once points are staged**, because the
+  button then says what it will do.
+
+Two iOS changes deliberately not ported: pinning the rail to `.large` Dynamic Type has no clean
+Compose equivalent (Android scales `sp` globally, and overriding `LocalDensity.fontScale` for one
+column fights the accessibility setting rather than serving it), and `RailButton`'s `controlSize`
+tuning is a SwiftUI detail with no counterpart.
+
+**Previously level with iOS `89adb97` (2 August 2026).** iOS shipped 1.5 and then reworked the table across
 21 commits; all of the portable ones are in. What changed here:
 
 - **An action rail on every play phase.** The cards fill and centre the play column; the prompt,
@@ -699,7 +723,7 @@ Sequenced so the riskiest, most cross-cutting thing is proven first.
 | **3** | `:core` port — models, scorer, engine + differential fixtures | large | ✅ done |
 | **4** | **LAN transport on both platforms + merged iOS discovery.** Prove iOS↔Android with a throwaway harness before any UI exists | large | ✅ done — interop proven, see below |
 | **5** | Feel — render WAVs, `SoundEffects`, `HapticsController` | medium | ✅ done, and now actually verified on hardware — it had never once fired, see §5.3 |
-| **6** | UI — game table first (the bulk), then overlays, then chrome | large | ✅ done — table (level with iOS `89adb97`, §6.1), overlays, Settings, menu, connect, help, onboarding and the scoring replay. **Check-my-count is the one iOS screen with no Android counterpart**; it is a small overlay over the show, not a screen in its own right |
+| **6** | UI — game table first (the bulk), then overlays, then chrome | large | ✅ done — table (level with iOS `6e5887d`, §6.1), overlays, Settings, menu, connect, help, onboarding, the scoring replay and check-my-count. Every iOS screen now has an Android counterpart |
 | **7** | Persistence, resume, lifecycle | medium | ✅ done — settings, saved game, resume marker and the foreground/background hooks (§7). Untested across two devices, which is the same gap as phase 4. |
 | **8** | Tablet/foldable pass, edge-to-edge, predictive back, accessibility | medium | ✅ done, foldables included — see §8.1. Open: the table is *usable* but loose on a near-square unfolded screen, and real tablet hardware still hasn't confirmed the orientation behaviour |
 | **9** | Play Console setup, signing, icon/splash, store listing, release | medium | code side done (icon, splash, signing config); the rest needs a Play Console account — see `RELEASE.md` |

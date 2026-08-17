@@ -68,6 +68,38 @@ class WireFormatTest {
     }
 
     @Test
+    fun `crib owners encode as a sorted array of card-player pairs`() {
+        // A Card can't be a JSON object key, so PROTOCOL.md pins this to an array sorted by rank
+        // then suit — the bytes must not depend on map iteration order. iOS's `WireCodec.cardOwners`
+        // is the other half.
+        val owners = linkedMapOf(
+            Card(Rank.KING, Suit.CLUBS) to PlayerID.TWO,
+            Card(Rank.ACE, Suit.HEARTS) to PlayerID.ONE,
+            Card(Rank.ACE, Suit.SPADES) to PlayerID.TWO,
+        )
+        val encoded = PairWireJson.encodeToString(CardOwnerMapSerializer, owners)
+        assertEquals(
+            """[{"card":{"rank":1,"suit":"spades"},"player":"two"},""" +
+                """{"card":{"rank":1,"suit":"hearts"},"player":"one"},""" +
+                """{"card":{"rank":13,"suit":"clubs"},"player":"two"}]""",
+            encoded,
+        )
+        assertEquals(owners, PairWireJson.decodeFromString(CardOwnerMapSerializer, encoded))
+    }
+
+    @Test
+    fun `a lastCard peg event round-trips, as iOS 1_6 sends it`() {
+        // Unknown enum values are a hard decode failure, so this case missing meant a snapshot from
+        // an iOS 1.6 host took the whole game down rather than degrading.
+        val decoded = PairWireJson.decodeFromString(
+            PegEvent.serializer(),
+            """{"kind":"lastCard","scorer":"one","points":2}""",
+        )
+        assertEquals(PegEvent.Kind.LAST_CARD, decoded.kind)
+        assertEquals("lastCard", decoded.kind.wireName)
+    }
+
+    @Test
     fun `snapshot round-trips`() {
         val original = PlayerSnapshotFixtures.minimal()
         assertEquals(original, json.decodeFromString<PlayerSnapshot>(json.encodeToString(original)))

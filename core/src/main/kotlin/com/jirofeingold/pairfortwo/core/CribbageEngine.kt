@@ -112,6 +112,8 @@ object CribbageEngine {
 
         s.hands = s.hands + (player to hand.filterNot { it in cards })
         s.crib = s.crib + cards
+        // Remember whose cards these are — the show marks each crib card with its owner's colour.
+        s.cribOwners = s.cribOwners + cards.associateWith { player }
         s.discarded = s.discarded + player
 
         if (s.discarded.size == 2) {
@@ -186,7 +188,11 @@ object CribbageEngine {
         }
 
         if (done) {
-            s.activeFlags = flags + ScoreFlag(ScoreFlag.Kind.LAST_CARD, points = 1, detail = "Last card")
+            val withLast = flags + ScoreFlag(ScoreFlag.Kind.LAST_CARD, points = 1, detail = "Last card")
+            s.activeFlags = withLast
+            // Tell *both* devices the hand's last card is down: the player who laid it takes the
+            // point, and the other learns why the play stopped and that the count is next.
+            notePegEvent(s, PegEvent(PegEvent.Kind.LAST_CARD, scorer = player, points = withLast.totalPoints))
             finishPegging(s)
             autoScore(s, to = player)
             return true

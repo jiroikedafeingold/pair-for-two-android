@@ -33,9 +33,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -81,12 +84,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.delay
 import com.jirofeingold.pairfortwo.feel.GameFeedback
 import com.jirofeingold.pairfortwo.feel.HapticPatterns
 import com.jirofeingold.pairfortwo.core.GamePhase
 import com.jirofeingold.pairfortwo.core.GameViewModel
+import com.jirofeingold.pairfortwo.core.PegEvent
 import com.jirofeingold.pairfortwo.core.PlayerID
 import com.jirofeingold.pairfortwo.core.PlayerSnapshot
+import com.jirofeingold.pairfortwo.core.ScoreFlag
 import com.jirofeingold.pairfortwo.core.ScoringMode
 import com.jirofeingold.pairfortwo.core.Seat
 import com.jirofeingold.pairfortwo.core.sortedForDisplay
@@ -101,10 +107,6 @@ import com.jirofeingold.pairfortwo.ui.theme.playerTheme
  * The top band is the scoreboard, coach banner and flag chips; the rest is the shared play area and
  * the current player's hand. Every card size is derived from the available geometry exactly as the
  * Swift's `GeometryReader` does, so the same layout simply grows on a tablet with no device checks.
- *
- * ## Not yet ported
- *
- * - The check-my-count overlay.
  *
  * @param confirmRelease the "Confirm after release" setting: the slider stages an amount and the
  *   +N button commits it, rather than scoring the moment a thumb lifts. Applies to *every* panel on
@@ -143,6 +145,10 @@ fun GameTableScreen(
     // own "Replay scoring".
     var preWinReplayShown by remember { mutableStateOf(false) }
     var showManualReplay by remember { mutableStateOf(false) }
+    // The transient "Go / 31 / last card — take the score" toast.
+    var pegAlert by remember { mutableStateOf<String?>(null) }
+    // "Check my count" — the correct scoring for whatever is being counted.
+    var showCheck by remember { mutableStateOf(false) }
 
     // A fresh hand or a rematch re-arms the pre-win replay for the next game over.
     LaunchedEffect(snapshot.phase) {
@@ -159,6 +165,53 @@ fun GameTableScreen(
     // the count — so it is felt here rather than at a call site.
     LaunchedEffect(snapshot.runningCount) {
         if (snapshot.runningCount == 31) feedback?.play(HapticPatterns.Action.THIRTY_ONE)
+    }
+
+    // A go, a 31 or the hand's last card: tell the player who earns the point to take it, and the
+    // other player why the play stopped. Keyed on the engine's tick, not the event itself, so a
+    // repeat (heartbeat) broadcast of the same snapshot never re-fires the toast.
+    //
+    // Android had none of this — the events were on the snapshot and nothing consumed them, so a
+    // "go" from the other device was completely silent.
+    LaunchedEffect(vm.pegEventTick) {
+        val event = vm.lastPegEvent
+        if (vm.pegEventTick == 0 || event == null) return@LaunchedEffect
+        val auto = snapshot.scoringMode == ScoringMode.AUTO
+        val mine = event.scorer == snapshot.you || vm.isLoopback
+        val who = vm.name(event.scorer)
+        val text = when (event.kind) {
+            PegEvent.Kind.GO ->
+                if (event.points == 0) {
+                    // A go that scores nothing passed the play to the other player — only they need
+                    // telling, and telling the sayer "your play" would be a lie.
+                    if (mine) null else "$who said Go — your play"
+                } else if (auto) {
+                    "Go — $who pegs 1"
+                } else if (mine) {
+                    "Go — take 1"
+                } else {
+                    "$who takes 1 for the go"
+                }
+            PegEvent.Kind.THIRTY_ONE ->
+                if (auto) "31 for ${event.points}!"
+                else if (mine) "31 — take ${event.points}"
+                else "$who hits 31 for ${event.points}"
+            PegEvent.Kind.LAST_CARD ->
+                if (auto) "Last card — $who pegs ${event.points}"
+                else if (mine) "Last card — take ${event.points}"
+                else "Last card played — $who takes ${event.points}"
+        } ?: return@LaunchedEffect
+
+        feedback?.play(
+            if (event.kind == PegEvent.Kind.THIRTY_ONE) {
+                HapticPatterns.Action.THIRTY_ONE
+            } else {
+                HapticPatterns.Action.GO
+            },
+        )
+        pegAlert = text
+        delay(PEG_ALERT_MS)
+        pegAlert = null
     }
 
     // Points staged on a panel but not yet claimed, per player — pass-and-play shows a panel each
@@ -266,10 +319,13 @@ fun GameTableScreen(
         // hand hung off the bottom the moment the play area got taller.
         val peggingHandWidth = minOf((playWidth - 40.dp) / 4.6f, (playHeight - 66.dp) / 1.96f)
         val pileWidth = peggingHandWidth * 0.35f
-        // The show row is the cut card + a 16dp gap + a four-card hand at 8dp spacing — five cards
-        // and ~44dp — so dividing by five keeps it inside the play column instead of spilling into
-        // the rail.
-        val showWidth = minOf((playWidth - 44.dp) / 5f, (playHeight - 40.dp) / 1.45f)
+        // The show row is the cut card, a 16dp gap, then a four-card hand — but `HandView` spaces
+        // its cards by 0.18x their width, so the row is 5.54 card-widths, not five.
+        //
+        // Dividing by five overflowed the column by half a card, and a Row hands the shortfall to
+        // its last child: the fifth card came out visibly narrower than the other four. Budgeting
+        // the gaps honestly keeps all five identical.
+        val showWidth = minOf((playWidth - 30.dp) / 5.6f, (playHeight - 40.dp) / 1.45f)
         // The two cut screens hold just two cards, so they'd balloon on a tablet — halve them there.
         // 130dp, not 76: the cut card in the rail carries a "Tap to cut" caption under it, and the
         // budget has to cover the caption as well as the card or the caption is the thing that gets
@@ -330,6 +386,7 @@ fun GameTableScreen(
                 selected = selected,
                 uncommitted = uncommitted.values.sum(),
                 commitThenAdvance = commitThenAdvance,
+                onCheckCount = { showCheck = true },
                 isTablet = isTablet,
                 railWidth = railWidth,
                 handWidth = handWidth,
@@ -347,6 +404,21 @@ fun GameTableScreen(
                     .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Bottom))
                     .padding(horizontal = controlInsetSide)
                     .padding(vertical = 14.dp),
+            )
+        }
+
+        pegAlert?.let { text ->
+            Text(
+                text,
+                color = Color.Black,
+                textAlign = TextAlign.Center,
+                style = tightTextStyle(17.sp, FontWeight.Black),
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    // Below the band, so it never covers the coach line — same place as iOS.
+                    .padding(top = TOP_BAND_HEIGHT + insetTop + 12.dp)
+                    .background(CribGold, CircleShape)
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
             )
         }
 
@@ -439,6 +511,15 @@ fun GameTableScreen(
             )
         }
 
+        if (showCheck) {
+            CheckCountOverlay(
+                label = vm.showLabel,
+                flags = vm.checkScoreFlags,
+                total = vm.checkScoreTotal,
+                onDismiss = { showCheck = false },
+            )
+        }
+
         if (playAgainUnavailable) {
             PlayAgainUnavailableOverlay(
                 onBack = { if (onExit != null) vm.quit() else playAgainUnavailable = false },
@@ -508,8 +589,142 @@ private val SCORE_PANEL_HEIGHT = 92.dp
  */
 private val TOP_BAND_HEIGHT = 12.dp + BANNER_ROW_HEIGHT + 8.dp + SCORE_PANEL_HEIGHT + 4.dp
 
+/** How long the go / 31 / last-card toast stays up. iOS uses the same couple of seconds. */
+private const val PEG_ALERT_MS = 2_400L
+
 private val CONTROL_DISC = 36.dp
 private val CONTROL_TARGET = 48.dp
+
+/** "Check" — the show rail's gold-outlined pill, as on iOS. */
+@Composable
+private fun CheckPill(onClick: () -> Unit) {
+    Row(
+        Modifier
+            .background(Color.White.copy(alpha = 0.12f), CircleShape)
+            .border(1.2.dp, CribGold.copy(alpha = 0.6f), CircleShape)
+            .clickable(
+                role = Role.Button,
+                onClickLabel = "Check my count",
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(),
+                onClick = onClick,
+            )
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            Icons.Filled.CheckCircle,
+            contentDescription = null,
+            tint = CribGold,
+            modifier = Modifier.size(16.dp),
+        )
+        Text("Check", color = CribGold, style = tightTextStyle(14.sp, FontWeight.SemiBold))
+    }
+}
+
+/**
+ * The correct count for whatever is being counted — port of iOS's check-my-count overlay.
+ *
+ * The point of a manual scoring mode is that you do the arithmetic; the point of this is that you
+ * can find out whether you got it right without the app having done it for you first. It lists the
+ * same breakdown the scorer would apply, so a disagreement is legible rather than a bare number.
+ */
+@Composable
+private fun CheckCountOverlay(
+    label: String,
+    flags: List<ScoreFlag>,
+    total: Int,
+    onDismiss: () -> Unit,
+) {
+    BackHandler { onDismiss() }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onDismiss,
+            ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            Modifier
+                .widthIn(max = 380.dp)
+                .windowInsetsPadding(WindowInsets.safeContent)
+                .background(FeltMid, RoundedCornerShape(20.dp))
+                .border(1.dp, CribGold.copy(alpha = 0.4f), RoundedCornerShape(20.dp))
+                // Swallow taps on the card itself, so only the scrim dismisses.
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                )
+                .padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Correct count", color = Color.White, style = tightTextStyle(19.sp, FontWeight.Bold))
+            Text(label, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+
+            if (flags.isEmpty()) {
+                Text("0", color = CribGold, style = tightTextStyle(42.sp, FontWeight.Black))
+                Text(
+                    "Nothing scores in this hand.",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                )
+            } else {
+                Column(
+                    Modifier
+                        .heightIn(max = 150.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    for (flag in flags) {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            Text(
+                                flag.detail,
+                                color = Color.White.copy(alpha = 0.9f),
+                                fontSize = 14.sp,
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Text(
+                                "+${flag.points}",
+                                color = CribGold,
+                                style = tightTextStyle(14.sp, FontWeight.Black),
+                            )
+                        }
+                    }
+                }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .height(1.dp)
+                        .background(Color.White.copy(alpha = 0.15f)),
+                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Text("$total", color = CribGold, style = tightTextStyle(40.sp, FontWeight.Black))
+                    Text(
+                        if (total == 1) "point" else "points",
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(bottom = 6.dp),
+                    )
+                }
+            }
+
+            GoldButton("Got it", onDismiss)
+        }
+    }
+}
 
 /**
  * The table's own chrome button — iOS's `controlButton`, sized for a thumb.
@@ -748,6 +963,7 @@ private fun BottomBand(
     selected: Set<com.jirofeingold.pairfortwo.core.Card>,
     uncommitted: Int,
     commitThenAdvance: () -> Unit,
+    onCheckCount: () -> Unit,
     isTablet: Boolean,
     railWidth: Dp,
     handWidth: Dp,
@@ -767,7 +983,7 @@ private fun BottomBand(
                     vm, s, peggingHandWidth, pileWidth, railWidth, uncommitted, commitThenAdvance, isTablet,
                 )
             GamePhase.SHOW_PONE, GamePhase.SHOW_DEALER, GamePhase.SHOW_CRIB ->
-                ShowArea(vm, s, showWidth, railWidth, uncommitted, commitThenAdvance)
+                ShowArea(vm, s, showWidth, railWidth, uncommitted, commitThenAdvance, onCheckCount)
             GamePhase.HAND_COMPLETE -> HandCompleteArea(vm, s, railWidth)
             GamePhase.GAME_OVER -> Spacer(Modifier.fillMaxSize())   // the overlay covers this
             else -> Spacer(Modifier.fillMaxSize())
@@ -821,8 +1037,14 @@ private fun PlayScene(
             // measure taller here, and on the show screen the flag column landed straight on top of
             // "Count it on your slider, then Continue". Reserving the band costs a little vertical
             // alignment with the cards and buys back legibility.
-            Box(Modifier.height(FLAG_BAND_HEIGHT)) {
-                RailFlags(vm, s, Modifier.align(Alignment.TopCenter))
+            // Reserved only in the phases that actually surface flags. Reserving it everywhere
+            // pushed the tall "tap to cut" card down off the bottom of the felt — the same fix iOS
+            // made in 592343f. Within one of those phases the height is constant, so the prompt and
+            // button below never shift as flags come and go.
+            if (s.phase.surfacesScoreFlags || s.flags.isNotEmpty()) {
+                Box(Modifier.height(FLAG_BAND_HEIGHT)) {
+                    RailFlags(vm, s, Modifier.align(Alignment.TopCenter))
+                }
             }
             Column(
                 Modifier
@@ -1140,7 +1362,9 @@ private fun ShowArea(
     railWidth: Dp,
     uncommitted: Int,
     commitThenAdvance: () -> Unit,
+    onCheckCount: () -> Unit,
 ) {
+    val feedback = LocalFeedback.current
     val isCrib = s.phase == GamePhase.SHOW_CRIB
     // The crib adds a badge and a backing, so shrink its cards a hair — no more than that, now the
     // button lives in the rail rather than below the cards.
@@ -1206,6 +1430,12 @@ private fun ShowArea(
                             cardWidth = cardW,
                             // Re-deals on each show sub-phase, as the Swift does.
                             dealSignal = s.phase,
+                            // In the crib, each card is marked in the colour of whoever discarded
+                            // it — four cards from two hands, and it settles "whose five was that?"
+                            marker = { card ->
+                                val owner = if (isCrib) vm.cribOwner(card) else null
+                                owner?.let { playerTheme(vm.colorID(it)).primary }
+                            },
                         )
                     }
                 }
@@ -1213,14 +1443,22 @@ private fun ShowArea(
         },
     ) {
         if (vm.youAreCounting) {
-            Text(
-                if (s.scoringMode == ScoringMode.AUTO) "Scored automatically"
-                else "Count it on your slider, then Continue",
-                color = Color.White.copy(alpha = 0.7f),
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
-            )
+            // Once points are staged the button itself says what will happen ("Add 15 & continue"),
+            // so the standing instruction is dropped — it would only crowd the narrow rail.
+            if (uncommitted == 0) {
+                Text(
+                    if (s.scoringMode == ScoringMode.AUTO) "Scored automatically"
+                    else "Count it on your slider, then Continue",
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center,
+                )
+            }
             GoldButton(if (uncommitted > 0) "Add $uncommitted & continue" else "Continue", commitThenAdvance)
+            // Nothing to check when the app is doing the counting.
+            if (s.scoringMode != ScoringMode.AUTO) {
+                CheckPill { feedback?.play(HapticPatterns.Action.ADVANCE); onCheckCount() }
+            }
         } else {
             WaitingLabel("Waiting for ${vm.name(vm.showCountingPlayer ?: s.you)} to count…")
         }
@@ -1266,8 +1504,15 @@ private fun GoldButton(label: String, onClick: () -> Unit) {
         onClick = onClick,
         colors = ButtonDefaults.buttonColors(containerColor = CribGold, contentColor = Color.Black),
         border = BorderStroke(0.dp, Color.Transparent),
+        modifier = Modifier.fillMaxWidth(),
     ) {
-        Text(label, fontWeight = FontWeight.SemiBold)
+        // Wraps rather than truncating: the rail is a fixed width and these labels carry player
+        // names ("Add 15 & count the hands"), so one line is not a safe assumption.
+        Text(
+            label,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
     }
 }
 

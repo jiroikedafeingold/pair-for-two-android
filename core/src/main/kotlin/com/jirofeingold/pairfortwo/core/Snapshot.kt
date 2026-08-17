@@ -43,11 +43,50 @@ data class PegEvent(val kind: Kind, val scorer: PlayerID, val points: Int) {
     @Serializable
     enum class Kind {
         @SerialName("go") GO,
-        @SerialName("thirtyOne") THIRTY_ONE;
+        @SerialName("thirtyOne") THIRTY_ONE,
+
+        /**
+         * The hand's last card is down. Added by iOS 1.6 — *both* devices are told, so the player
+         * who laid it takes the point and the other learns why the play stopped.
+         *
+         * Android had no such case, which was not merely a missing feature: an unknown enum value is
+         * a hard decode failure, so a snapshot from an iOS 1.6 host took the whole game down.
+         */
+        @SerialName("lastCard") LAST_CARD;
 
         /** The wire/serial name, matching iOS's raw values. */
-        val wireName: String get() = if (this == GO) "go" else "thirtyOne"
+        val wireName: String
+            get() = when (this) {
+                GO -> "go"
+                THIRTY_ONE -> "thirtyOne"
+                LAST_CARD -> "lastCard"
+            }
     }
+}
+
+// ---- Card → player map ----
+
+/**
+ * `Map<Card, PlayerID>` as a JSON **array** of `{"card":…,"player":…}` — a `Card` cannot be an
+ * object key — **sorted by [Card.displaySortKey]**, so the bytes never depend on map iteration
+ * order. See PROTOCOL.md; iOS's `WireCodec.cardOwners` is the other half of this.
+ */
+internal object CardOwnerMapSerializer : KSerializer<Map<Card, PlayerID>> {
+    @Serializable
+    private data class Entry(val card: Card, val player: PlayerID)
+
+    private val delegate = ListSerializer(Entry.serializer())
+    override val descriptor: SerialDescriptor = delegate.descriptor
+
+    override fun serialize(encoder: Encoder, value: Map<Card, PlayerID>) {
+        val entries = value.entries
+            .sortedBy { it.key.displaySortKey }
+            .map { Entry(it.key, it.value) }
+        encoder.encodeSerializableValue(delegate, entries)
+    }
+
+    override fun deserialize(decoder: Decoder): Map<Card, PlayerID> =
+        decoder.decodeSerializableValue(delegate).associate { it.card to it.player }
 }
 
 // ---- Sorted player set ----
@@ -85,6 +124,14 @@ data class PlayerSnapshot(
     /** Non-null only once counting reaches the crib. */
     val crib: List<Card>? = null,
     val cribCount: Int,
+    /**
+     * Who discarded each crib card, so the crib row can mark each with its owner's colour.
+     *
+     * Non-null only alongside [crib], and absent from a game that started on a build predating it —
+     * hence nullable rather than an empty map.
+     */
+    @Serializable(with = CardOwnerMapSerializer::class)
+    val cribOwners: Map<Card, PlayerID>? = null,
     val starter: Card? = null,
     /**
      * During the manual starter cut, true once the pone has lifted the deck, so both devices

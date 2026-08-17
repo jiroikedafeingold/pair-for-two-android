@@ -133,6 +133,15 @@ enum class GamePhase {
     val revealsHands: Boolean get() = revealRank >= SHOW_PONE.revealRank
     val revealsCrib: Boolean get() = revealRank >= SHOW_CRIB.revealRank
 
+    /**
+     * Whether this phase can put scoring flags on the table — his heels at the cut, the pegging
+     * scores, each hand and the crib at the show. Drives how much room the action rail keeps for
+     * them: reserving the slot in *every* phase pushed the tall "tap to cut" card off the bottom.
+     */
+    val surfacesScoreFlags: Boolean
+        get() = this == CUT_STARTER || this == PEGGING ||
+            this == SHOW_PONE || this == SHOW_DEALER || this == SHOW_CRIB
+
     /** The wire/serial name, matching iOS's raw values. */
     val wireName: String
         get() = when (this) {

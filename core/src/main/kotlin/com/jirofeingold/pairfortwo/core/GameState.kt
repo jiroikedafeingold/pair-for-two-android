@@ -40,6 +40,11 @@ class GameState(
     var deck: Deck = Deck.ordered(),
     var hands: Map<PlayerID, List<Card>> = mapOf(PlayerID.ONE to emptyList(), PlayerID.TWO to emptyList()),
     var crib: List<Card> = emptyList(),
+    /**
+     * Who discarded each crib card, so the crib can be marked up at the show. Empty for a game
+     * saved by a build that predates it — those simply show no markers.
+     */
+    var cribOwners: Map<Card, PlayerID> = emptyMap(),
     var starter: Card? = null,
     var discarded: Set<PlayerID> = emptySet(),
 
@@ -120,6 +125,7 @@ class GameState(
                 if (phase == GamePhase.PEGGING) unplayed(opponent).size else (hands[opponent]?.size ?: 0),
             opponentHand = if (reveal) hands[opponent] else null,
             crib = if (phase.revealsCrib) crib else null,
+            cribOwners = if (phase.revealsCrib) cribOwners else null,
             cribCount = crib.size,
             starter = starter,
             starterCutLifted = starterCutLifted,
