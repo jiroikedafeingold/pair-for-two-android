@@ -68,9 +68,11 @@ None of this is code, and all of it needs your Google account:
 2. **Store listing** — title, short and full description, feature graphic (1024×500), phone and
    tablet screenshots. The iOS `fastlane/metadata` copy is a starting point, minus the Game Center
    and Bluetooth claims, which are not true of this build (PLAN.md §0).
-3. **A privacy policy URL.** The app collects nothing and talks only to the other device over the
-   local network, but Play requires the declaration regardless. The iOS app already publishes one
-   through GitHub Pages (`docs/` in the iOS repo) — it can serve both.
+3. **A privacy policy URL** — ready: https://jiroikedafeingold.github.io/pair-for-two/. It now covers
+   both apps explicitly, including this one's permissions (network/Wi-Fi for discovery, vibration; no
+   location, no Bluetooth) and the fact that the shared-Wi-Fi transport is a plain TCP connection, not
+   an encrypted one. It is published from `docs/index.html` in the **iOS** repo — edit it there, not
+   here, and revisit it if this app ever gains an online mode or another transport.
 4. **A data safety form**, saying the same: no collection, no sharing.
 5. **`fastlane supply`**, if this should be as scripted as the iOS side. `fastlane/metadata/android/`
    already exists with the store icon in it, so the layout is started.
