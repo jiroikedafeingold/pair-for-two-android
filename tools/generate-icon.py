@@ -18,6 +18,12 @@ What it writes:
 - `mipmap-*/ic_launcher.webp` and `ic_launcher_round.webp` — the legacy bitmaps. `minSdk 26` means
   every device gets the adaptive icon, but some launchers and tools still read these, and leaving
   the Android Studio template droid in them would be a trap for exactly one embarrassing screenshot.
+- `drawable-xxxhdpi/splash_icon_foreground.webp` — the same art again, for the launch screen. It
+  needs its own copy because the splash draws the icon *much* larger than a launcher does: the
+  canvas is 288dp rather than 108dp, so at xxhdpi it wants 864px and the 432px launcher foreground
+  was being blown up nearly threefold and looked it. This one is a 288dp asset at xxxhdpi — 1152px —
+  which every density can scale *down* from. WebP at 95 rather than PNG: the same pixels cost
+  882KB lossless and 179KB here, and the difference is not visible on a card back.
 - `fastlane/metadata/android/en-GB/images/icon.png` — the 512px Play Store listing icon.
 """
 
@@ -35,6 +41,9 @@ SOURCE = Path(
 FOREGROUND_PX = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
 # ...with the art occupying the central 72 of those 108 units — the region a mask reveals.
 ART_FRACTION = 72 / 108
+# Splash foreground: the same 108-unit composition, but drawn for a 288dp canvas at xxxhdpi. Only
+# the one bucket — it is the largest any device asks for, and smaller densities prescale it down.
+SPLASH_PX = 288 * 4
 # Legacy launcher bitmap: 48dp square at each density.
 LEGACY_PX = {"mdpi": 48, "hdpi": 72, "xhdpi": 96, "xxhdpi": 144, "xxxhdpi": 192}
 
@@ -62,6 +71,15 @@ def main() -> None:
         path = res / f"mipmap-{density}/ic_launcher_foreground.png"
         canvas.save(path, optimize=True)
         print(path.relative_to(REPO))
+
+    splash = Image.new("RGBA", (SPLASH_PX, SPLASH_PX), (0, 0, 0, 0))
+    splash_art = int(round(SPLASH_PX * ART_FRACTION))
+    splash_offset = (SPLASH_PX - splash_art) // 2
+    splash.paste(source.resize((splash_art, splash_art), Image.LANCZOS), (splash_offset,) * 2)
+    splash_path = res / "drawable-xxxhdpi/splash_icon_foreground.webp"
+    splash_path.parent.mkdir(parents=True, exist_ok=True)
+    splash.save(splash_path, "WEBP", quality=95, method=6)
+    print(splash_path.relative_to(REPO))
 
     for density, size in LEGACY_PX.items():
         scaled = source.resize((size, size), Image.LANCZOS)

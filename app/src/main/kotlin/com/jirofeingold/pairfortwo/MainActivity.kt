@@ -13,9 +13,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
@@ -26,7 +23,6 @@ import com.jirofeingold.pairfortwo.feel.GameFeedback
 import com.jirofeingold.pairfortwo.persistence.AndroidGamePersistence
 import com.jirofeingold.pairfortwo.settings.SettingsStore
 import com.jirofeingold.pairfortwo.ui.RootScaffold
-import com.jirofeingold.pairfortwo.ui.SplashArt
 import com.jirofeingold.pairfortwo.ui.theme.FeltDark
 import com.jirofeingold.pairfortwo.ui.theme.PairForTwoTheme
 import kotlinx.coroutines.launch
@@ -105,18 +101,6 @@ class MainActivity : ComponentActivity() {
                         feedback = feedback,
                         persistence = persistence,
                         scope = lifecycleScope,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-
-                // The shared launch art, over the top until the app is up. Not the *system* splash
-                // — Android owns that and only allows an icon on a colour — so this is where the
-                // picture iOS opens on can actually be shown. See [SplashArt].
-                var splashShown by rememberSaveable { mutableStateOf(false) }
-                if (!splashShown) {
-                    SplashArt(
-                        ready = current != null,
-                        onDone = { splashShown = true },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }

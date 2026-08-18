@@ -722,12 +722,17 @@ Android applies it to every panel. The iOS side is worth the same fix.
 - **App icon** — done. `tools/generate-icon.py` derives every density from the iOS `icon_1024.png`,
   so both stores show the same art. The foreground sits at 72 of the 108dp canvas, which is what a
   mask actually reveals: at full bleed the mask ate the tops of both cards.
-- **Splash** — the shared `splash.png` art *is* shown, but in the app rather than as the system
-  splash. From Android 12 the platform owns that slot and allows only a masked icon on a solid
-  colour, so the system splash is the app icon on felt via `core-splashscreen`, and `SplashArt`
-  puts the 1534×704 banner on the app's own first frame — the two platforms open on the same
-  picture. It pays for the extra beat by covering the wait for the first settings read, which until
-  now showed a blank felt rectangle; a tap skips it.
+- **Splash** — the app icon on felt via `core-splashscreen`, and *not* iOS's `splash.png`. From
+  Android 12 the platform owns that slot and allows only a masked icon on a colour, so a full-bleed
+  launch image cannot be given to it. Showing the banner on the app's own first frame instead was
+  tried and removed: it put a picture in front of a player who had just tapped the app, which is a
+  cost iOS pays only because its launch screen is free.
+
+  The icon there is `drawable/splash_icon`, its own asset rather than `mipmap/ic_launcher`. The
+  splash lays an adaptive icon out on a **288dp** canvas and reveals the central 192dp; a launcher
+  uses 108dp. So the launcher foreground — 432px at its largest — was being blown up to as much as
+  1152px, and looked it. The splash asset is 288dp at xxxhdpi, so every density scales it down.
+  Same framing: the art sits at 72 of 108 units either way.
 - **Strings** — everything into `strings.xml` from the start (the iOS app hardcodes English;
   no `.xcstrings` exists yet). Costs nothing now, and makes both apps translatable later.
 

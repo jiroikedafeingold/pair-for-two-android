@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The launch screen's icon. The same two queens as `mipmap/ic_launcher`, and deliberately a
+    separate drawable rather than a reference to it.
+
+    The splash draws the icon far larger than a launcher ever does: with no icon background set, the
+    system lays the adaptive icon out on a 288dp canvas and reveals its central 192dp. A launcher's
+    canvas is 108dp. Pointing the splash at the launcher icon therefore asked a 432px foreground
+    (108dp at xxxhdpi) to fill up to 1152px, and it looked exactly as soft as that sounds. The
+    foreground here is a 288dp asset — 1152px at xxxhdpi — so every density scales it *down*.
+
+    Still an adaptive icon, because the splash masks one anyway and the art is already composed for
+    that: at 72 of its 108 units it lands precisely on the 192dp the mask reveals. The framing is
+    unchanged; only the resolution is.
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/felt_dark" />
+    <foreground android:drawable="@drawable/splash_icon_foreground" />
+</adaptive-icon>
