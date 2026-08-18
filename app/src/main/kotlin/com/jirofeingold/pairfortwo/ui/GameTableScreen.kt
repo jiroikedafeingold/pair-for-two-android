@@ -65,10 +65,12 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.draw.alpha
@@ -80,6 +82,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1031,6 +1034,24 @@ private fun PlayScene(
                 .fillMaxHeight(),
         ) {
         val railHeight = maxHeight
+        val flagsSlot = minOf(FLAG_BAND_HEIGHT, (railHeight - RAIL_ACTION_HEIGHT).coerceAtLeast(0.dp))
+        // **The rail's text scale is capped.**
+        //
+        // It is a fixed-width column carrying a prompt, a button and the Check pill, and at the
+        // system's larger text sizes they stop fitting: on a phone set to 150% the prompt took
+        // three tall lines and pushed the Check pill clean off the bottom of the felt, which is
+        // exactly how it was reported. iOS pins this column to `.large` for the same reason
+        // (70b267c); this is the Compose equivalent, and a little more generous — the cap is 1.2,
+        // not 1.0, so the setting still does something here.
+        //
+        // Only the rail. The cards, the scoreboard and every other screen scale normally.
+        val density = LocalDensity.current
+        CompositionLocalProvider(
+            LocalDensity provides Density(
+                density = density.density,
+                fontScale = density.fontScale.coerceAtMost(RAIL_MAX_FONT_SCALE),
+            ),
+        ) {
         Column(
             Modifier.fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -1052,14 +1073,13 @@ private fun PlayScene(
                 // barely 200dp, and a fixed 96dp of flags plus a prompt, a button and the Check
                 // pill does not fit — a Column lays its overflow out past its own bounds, so the
                 // last child simply ends up off the felt. iOS subtracts the same way.
-                Box(
-                    Modifier.height(
-                        minOf(FLAG_BAND_HEIGHT, (railHeight - RAIL_ACTION_HEIGHT).coerceAtLeast(0.dp)),
-                    ),
-                ) {
+                Box(Modifier.height(flagsSlot)) {
                     RailFlags(vm, s, Modifier.align(Alignment.TopCenter))
                 }
             }
+            CompositionLocalProvider(
+                LocalRailRoom provides (railHeight - flagsSlot).coerceAtLeast(0.dp),
+            ) {
             Column(
                 Modifier
                     .weight(1f)
@@ -1072,6 +1092,8 @@ private fun PlayScene(
                 verticalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterVertically),
                 content = action,
             )
+            }
+        }
         }
         }
     }
@@ -1086,6 +1108,21 @@ private val FLAG_BAND_HEIGHT = 96.dp
  * their room on a short screen and the flags give way instead.
  */
 private val RAIL_ACTION_HEIGHT = 108.dp
+
+/**
+ * The largest text scale the action rail will honour. The rest of the app scales without limit;
+ * this column cannot, because its width is fixed and its contents must all stay on screen.
+ */
+private const val RAIL_MAX_FONT_SCALE = 1.2f
+
+/** Below this much room, the show's standing prompt is dropped so the Check pill keeps its place. */
+private val RAIL_PROMPT_MIN_ROOM = 170.dp
+
+/**
+ * How much vertical room the rail's action column actually got. Published so a phase can decide
+ * what to leave out rather than letting a Column silently push its last child off the felt.
+ */
+private val LocalRailRoom = compositionLocalOf { Dp.Infinity }
 
 /**
  * The scoring flags for the current context, as a column pinned to the top of the rail.
@@ -1471,7 +1508,14 @@ private fun ShowArea(
         if (vm.youAreCounting) {
             // Once points are staged the button itself says what will happen ("Add 15 & continue"),
             // so the standing instruction is dropped — it would only crowd the narrow rail.
-            if (uncommitted == 0) {
+            //
+            // It is also dropped when the rail simply hasn't the height for everything. A Column
+            // lays its overflow out past its own bounds rather than shrinking, so *something* has
+            // to give, and the last child is the Check pill — which is how a phone at 150% text
+            // ended up with no Check button at all. Of the three, the standing instruction is the
+            // one the player can most afford to lose: the button says what it does, and the pill
+            // cannot say anything if it is off the screen.
+            if (uncommitted == 0 && LocalRailRoom.current >= RAIL_PROMPT_MIN_ROOM) {
                 Text(
                     if (s.scoringMode == ScoringMode.AUTO) "Scored automatically"
                     else "Count it on your slider, then Continue",

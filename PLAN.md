@@ -530,6 +530,16 @@ Android specifics to get right:
   whole scoreboard 47dp right — visibly off-centre on a symmetric composition. Both sides now take
   the larger inset, which costs a little felt on the clear side and keeps the table centred on the
   screen. Vertical insets are still per-side; only the horizontal pair is a visual axis.
+- **The rail's text scale is capped at 1.2, and its prompt yields when there is no room.** The
+  Check pill was in the build and still invisible on the reporter's phone, which turned out to be
+  set to **150% text**: in a fixed-width column the prompt took three tall lines and pushed the
+  pill — the last child — clean off the felt. iOS pins this column to `.large` Dynamic Type for
+  exactly this reason (70b267c); the earlier decision here that there was "no clean Compose
+  equivalent" was simply wrong, and `LocalDensity` with a capped `fontScale` is the equivalent.
+  Capping alone was not enough, so the standing prompt is also dropped when the measured rail room
+  is under 170dp: of the three, it is the one the player can most afford to lose. Reproduced and
+  fixed against an emulator at font scale 1.5 on a screen shorter than the reporter's.
+
 - **The rail reserves the action's share before the flags get theirs, and scrolls if even that is
   not enough.** A `Column` lays overflow out past its own bounds rather than shrinking, so on a
   short landscape phone the last child — the Check pill — simply ended up off the felt. iOS
