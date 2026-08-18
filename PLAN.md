@@ -727,8 +727,7 @@ Android applies it to every panel. The iOS side is worth the same fix.
   colour, so the system splash is the app icon on felt via `core-splashscreen`, and `SplashArt`
   puts the 1534×704 banner on the app's own first frame — the two platforms open on the same
   picture. It pays for the extra beat by covering the wait for the first settings read, which until
-  now showed a blank felt rectangle; a tap skips it. Originally recorded here as "not `splash.png`",
-  which is what iOS's launch screen amounts to anyway.
+  now showed a blank felt rectangle; a tap skips it.
 - **Strings** — everything into `strings.xml` from the start (the iOS app hardcodes English;
   no `.xcstrings` exists yet). Costs nothing now, and makes both apps translatable later.
 
