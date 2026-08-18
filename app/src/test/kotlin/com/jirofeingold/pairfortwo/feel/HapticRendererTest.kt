@@ -22,6 +22,29 @@ class HapticRendererTest {
     // ---- Strategy selection ----
 
     @Test
+    fun `every action produces a pulse a plain motor can actually feel`() {
+        // The exhaustive version of the two cases below: whatever else changes about the patterns,
+        // no action may end up silent or imperceptible on a vibrator with no amplitude control.
+        // That device class cannot render intensity at all, so an effect it can't feel is an
+        // effect that does not exist.
+        val patterns = buildList {
+            HapticPatterns.Action.entries.forEach { add(it.name to HapticPatterns.forAction(it)) }
+            add("win" to HapticPatterns.win(SkunkLevel.NONE))
+            add("lose" to HapticPatterns.lose())
+            for (points in listOf(1, 4, 12, 29)) add("scoreTick($points)" to HapticPatterns.scoreTick(points))
+            for (p in listOf(0.0, 0.25, 0.5, 0.9, 1.0)) add("sliderTick($p)" to HapticPatterns.sliderTick(p))
+        }
+
+        for ((name, pattern) in patterns) {
+            val timings = HapticRenderer.toOnOffTimings(pattern)
+            assertNotNull(timings, "$name renders as silence")
+            val ons = timings!!.filterIndexed { i, _ -> i % 2 == 1 }
+            assertTrue(ons.isNotEmpty(), "$name has no pulse at all")
+            assertTrue(ons.all { it >= 55L }, "$name has pulses too short to feel: ${ons.toList()}")
+        }
+    }
+
+    @Test
     fun `on-off timings are long enough for a motor with no amplitude control`() {
         // A single crisp iOS transient — 20ms wide — which is what most of the game's taps are.
         val tap = HapticPattern(listOf(HapticEvent.Transient(time = 0.0, intensity = 0.9f, sharpness = 0.9f)))
@@ -35,7 +58,7 @@ class HapticRendererTest {
         assertNotNull(timings)
         val ons = timings!!.filterIndexed { i, _ -> i % 2 == 1 }
         assertTrue(ons.isNotEmpty(), "the tap produced no pulse at all")
-        assertTrue(ons.all { it >= 45L }, "pulses too short to feel: ${ons.toList()}")
+        assertTrue(ons.all { it >= 55L }, "pulses too short to feel: ${ons.toList()}")
     }
 
     @Test

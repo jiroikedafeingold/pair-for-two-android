@@ -35,7 +35,15 @@ object HapticRenderer {
      * is on or off, so quiet is better represented by a short buzz than by nothing.
      */
     private const val ON_THRESHOLD = 31          // ~0.12 of full scale
-    private const val MIN_ON_MS = 45L
+
+    /**
+     * 55ms because that is what the platform itself uses for a click on hardware like this — the
+     * test phone's own vibration history is full of `Prebaked=CLICK` at 52-57ms, and those are the
+     * taps its owner does feel (the keyboard's, the system's). Matching the OEM's own figure is a
+     * better guess at "long enough for this motor" than anything derived from the iOS timings,
+     * which were written for a Taptic Engine.
+     */
+    private const val MIN_ON_MS = 55L
     private const val MIN_GAP_MS = 25L
 
     /** Android's composition primitives, named so this file needn't import the Android SDK. */

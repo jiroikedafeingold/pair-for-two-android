@@ -414,6 +414,13 @@ with `VibrationAttributes.USAGE_TOUCH`, because an unattributed vibration is fil
 Verified on the device, not by eye: `dumpsys vibrator_manager` records the cut tap as
 `usage: TOUCH | com.jirofeingold.pairfortwo | played: [Step=0ms…Step=120ms(amplitude=1.00)…]`.
 
+**The pulse floor of 55ms is not a guess.** The test phone's own vibration history is full of
+`Prebaked=CLICK` at 52–57ms — the taps its owner *does* feel, from the keyboard and the system.
+Matching the OEM's own figure is a better estimate of "long enough for this motor" than anything
+derived from the iOS timings. Every action is checked: a test walks all eleven, plus win, lose, the
+score ticks and the slider ticks across their range, and asserts each renders at least one pulse of
+at least that length on the on/off rung.
+
 Files: `feel/SoundEffects.kt`, `feel/HapticsController.kt`, `feel/GameFeedback.kt`
 (the unified `play(action)` entry point matching iOS).
 
@@ -715,8 +722,12 @@ Android applies it to every panel. The iOS side is worth the same fix.
 - **App icon** — done. `tools/generate-icon.py` derives every density from the iOS `icon_1024.png`,
   so both stores show the same art. The foreground sits at 72 of the 108dp canvas, which is what a
   mask actually reveals: at full bleed the mask ate the tops of both cards.
-- **Splash** — done, but *not* `splash.png`. That art is a 1534×704 banner and the Android splash
-  slot is a masked square, so the launch screen is the app icon on felt via `core-splashscreen`,
+- **Splash** — the shared `splash.png` art *is* shown, but in the app rather than as the system
+  splash. From Android 12 the platform owns that slot and allows only a masked icon on a solid
+  colour, so the system splash is the app icon on felt via `core-splashscreen`, and `SplashArt`
+  puts the 1534×704 banner on the app's own first frame — the two platforms open on the same
+  picture. It pays for the extra beat by covering the wait for the first settings read, which until
+  now showed a blank felt rectangle; a tap skips it. Originally recorded here as "not `splash.png`",
   which is what iOS's launch screen amounts to anyway.
 - **Strings** — everything into `strings.xml` from the start (the iOS app hardcodes English;
   no `.xcstrings` exists yet). Costs nothing now, and makes both apps translatable later.
