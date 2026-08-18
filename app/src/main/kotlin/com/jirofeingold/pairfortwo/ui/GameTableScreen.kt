@@ -1034,7 +1034,10 @@ private fun PlayScene(
                 .fillMaxHeight(),
         ) {
         val railHeight = maxHeight
-        val flagsSlot = minOf(FLAG_BAND_HEIGHT, (railHeight - RAIL_ACTION_HEIGHT).coerceAtLeast(0.dp))
+        val reservesFlags = s.flags.isNotEmpty() || s.phase == GamePhase.PEGGING
+        val flagsSlot =
+            if (!reservesFlags) 0.dp
+            else minOf(FLAG_BAND_HEIGHT, (railHeight - RAIL_ACTION_HEIGHT).coerceAtLeast(0.dp))
         // **The rail's text scale is capped.**
         //
         // It is a fixed-width column carrying a prompt, a button and the Check pill, and at the
@@ -1064,11 +1067,15 @@ private fun PlayScene(
             // measure taller here, and on the show screen the flag column landed straight on top of
             // "Count it on your slider, then Continue". Reserving the band costs a little vertical
             // alignment with the cards and buys back legibility.
-            // Reserved only in the phases that actually surface flags. Reserving it everywhere
-            // pushed the tall "tap to cut" card down off the bottom of the felt — the same fix iOS
-            // made in 592343f. Within one of those phases the height is constant, so the prompt and
-            // button below never shift as flags come and go.
-            if (s.phase.surfacesScoreFlags || s.flags.isNotEmpty()) {
+            // Reserved when there are flags to show — and, during pegging, whether or not there
+            // are.
+            //
+            // Pegging is where flags flicker on and off with every card, and a slot that came and
+            // went with them would make the button below hop about. The show is different: the
+            // flags are fixed for each sub-phase, so reserving an empty band there only pushes the
+            // prompt and buttons down the felt, away from the cards they belong to. That is the
+            // "too low" this used to look like when counting with no flags on screen.
+            if (s.flags.isNotEmpty() || s.phase == GamePhase.PEGGING) {
                 // The action's share is reserved *first*. On a short landscape phone the rail has
                 // barely 200dp, and a fixed 96dp of flags plus a prompt, a button and the Check
                 // pill does not fit — a Column lays its overflow out past its own bounds, so the

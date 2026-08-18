@@ -530,6 +530,13 @@ Android specifics to get right:
   whole scoreboard 47dp right — visibly off-centre on a symmetric composition. Both sides now take
   the larger inset, which costs a little felt on the clear side and keeps the table centred on the
   screen. Vertical insets are still per-side; only the horizontal pair is a visual axis.
+- **The flags band is reserved only when there are flags — except during pegging.** Reserving it
+  for the whole show phase pushed the prompt and buttons down the felt, away from the cards they
+  belong to, even with nothing in it: reported as "too low compared to the cards being counted".
+  Pegging keeps the unconditional reservation, because that is where flags flicker on and off with
+  every card and the button below would otherwise hop about; at the show they are fixed per
+  sub-phase, so there is nothing to protect against.
+
 - **The rail's text scale is capped at 1.2, and its prompt yields when there is no room.** The
   Check pill was in the build and still invisible on the reporter's phone, which turned out to be
   set to **150% text**: in a fixed-width column the prompt took three tall lines and pushed the
