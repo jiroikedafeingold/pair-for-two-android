@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the Android launcher icons from the iOS app icon.
+"""Generate the Android launcher icons and the Play Store listing art from the iOS assets.
 
 The two apps must look like siblings on a home screen, so the art is not redrawn — it is the very
 same `icon_1024.png` the iOS asset catalog ships, resampled here. Re-run this rather than editing
@@ -25,6 +25,9 @@ What it writes:
   which every density can scale *down* from. WebP at 95 rather than PNG: the same pixels cost
   882KB lossless and 179KB here, and the difference is not visible on a card back.
 - `fastlane/metadata/android/en-GB/images/icon.png` — the 512px Play Store listing icon.
+- `fastlane/metadata/android/en-GB/images/featureGraphic.png` — the 1024×500 banner at the top of
+  the Play listing, cropped from iOS's `splash.png` so the store shows the art the app opens on.
+  Both are flattened to RGB: Play rejects transparency in either slot.
 """
 
 from pathlib import Path
@@ -32,10 +35,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 REPO = Path(__file__).resolve().parent.parent
-SOURCE = Path(
+IOS_ASSETS = Path(
     "/Users/jirofeingold/Projects/Pair for two/Pair for two/Assets.xcassets"
-    "/AppIcon.appiconset/icon_1024.png"
 )
+SOURCE = IOS_ASSETS / "AppIcon.appiconset/icon_1024.png"
+BANNER = IOS_ASSETS / "SplashArt.imageset/splash.png"
+# Play's feature graphic, fixed by the store at 1024×500.
+FEATURE_PX = (1024, 500)
 
 # Adaptive foreground: a 108dp square canvas at each density...
 FOREGROUND_PX = {"mdpi": 108, "hdpi": 162, "xhdpi": 216, "xxhdpi": 324, "xxxhdpi": 432}
@@ -92,10 +98,24 @@ def main() -> None:
         rounded(scaled, 0.5).save(circle, "WEBP", lossless=True)
         print(circle.relative_to(REPO))
 
-    store = REPO / "fastlane/metadata/android/en-GB/images/icon.png"
-    store.parent.mkdir(parents=True, exist_ok=True)
+    images = REPO / "fastlane/metadata/android/en-GB/images"
+    images.mkdir(parents=True, exist_ok=True)
+
+    store = images / "icon.png"
     source.resize((512, 512), Image.LANCZOS).convert("RGB").save(store, optimize=True)
     print(store.relative_to(REPO))
+
+    # The banner is 2.18:1 and the feature graphic is 2.05:1, so take the full height and trim the
+    # sides evenly. The title sits dead centre, so an even crop leaves it centred — which matters,
+    # because Play crops this further for some placements and always from the edges.
+    banner = Image.open(BANNER).convert("RGB")
+    keep = int(round(banner.height * FEATURE_PX[0] / FEATURE_PX[1]))
+    left = (banner.width - keep) // 2
+    feature = banner.crop((left, 0, left + keep, banner.height))
+    feature = feature.resize(FEATURE_PX, Image.LANCZOS)
+    feature_path = images / "featureGraphic.png"
+    feature.save(feature_path, optimize=True)
+    print(feature_path.relative_to(REPO))
 
 
 if __name__ == "__main__":
