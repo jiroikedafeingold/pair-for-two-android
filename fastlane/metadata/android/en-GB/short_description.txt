@@ -1,0 +1,1 @@
+Real cribbage across two devices — each player holds their own hand.

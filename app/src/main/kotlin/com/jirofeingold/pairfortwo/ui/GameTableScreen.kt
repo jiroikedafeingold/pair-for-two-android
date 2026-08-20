@@ -269,6 +269,7 @@ fun GameTableScreen(
     // help and settings were sitting.
     val gestureInsets = WindowInsets.safeContent.asPaddingValues()
     val controlInsetTop = maxOf(insetTop, gestureInsets.calculateTopPadding())
+    val controlInsetBottom = maxOf(insetBottom, gestureInsets.calculateBottomPadding())
     val controlInsetSide = maxOf(
         insetSide,
         gestureInsets.calculateLeftPadding(layoutDirection),
@@ -283,8 +284,18 @@ fun GameTableScreen(
     ) {
         // Budgets are computed from the *usable* area, so hiding the insets from the backgrounds
         // doesn't quietly hand the cards space they can't actually occupy.
-        val height = maxHeight - insetTop - insetBottom
-        val width = maxWidth - insetSide * 2
+        //
+        // Measured against what [BottomBand] is actually padded by, which is `controlInsetSide` and
+        // the gesture strip — not the smaller `insetSide` the backgrounds use. Budgeting on
+        // `insetSide` overstated the column by twice the difference, up to 96dp on a phone with a
+        // gesture strip down each edge, and a `Row` hands a shortfall to its *last* child: the last
+        // card in the row came out visibly narrower than the rest while every other card stayed
+        // full width. That is the "fifth card is too narrow" report, and it was never really about
+        // the show — the discard's sixth card did it too, on any device with a side strip.
+        // The same honesty vertically: the band clears `insetTop`, and below it the cards clear the
+        // bottom gesture strip and their own 14dp of padding, top and bottom.
+        val height = maxHeight - insetTop - controlInsetBottom - BOTTOM_BAND_PADDING * 2
+        val width = maxWidth - controlInsetSide * 2
 
         // The band is exactly as tall as its content needs — see [TOP_BAND_HEIGHT] — rather than a
         // fraction of the screen. It used to take 42% (capped at 215dp) and spend the surplus on
@@ -330,14 +341,14 @@ fun GameTableScreen(
         // the gaps honestly keeps all five identical.
         val showWidth = minOf((playWidth - 30.dp) / 5.6f, (playHeight - 40.dp) / 1.45f)
         // The two cut screens hold just two cards, so they'd balloon on a tablet — halve them there.
-        // 130dp, not 76: the cut card in the rail carries a "Tap to cut" caption under it, and the
-        // budget has to cover the caption as well as the card or the caption is the thing that gets
-        // clipped off the bottom — silently, because Compose drops an overflowing child rather than
-        // scrolling it. Checked against the shortest layout that has to work: a 411dp-tall emulator,
-        // which is tighter than the 443dp test phone. 148dp, not 130: at 130 the caption's
-        // descenders sat on the bottom edge of the test phone once the play area got its height
-        // back.
-        val cutBase = minOf((playWidth - 50.dp) / 2.2f, (playHeight - 148.dp) / 1.45f)
+        //
+        // 52dp of overhead is what the play column actually stacks around the card: `CutResult`'s
+        // name label above it and its "deals · crib" footer below, with 4dp gaps. It was 148 while
+        // the height budget was overstating the column — the surplus was really paying for the
+        // bottom inset nobody had subtracted, and cutting it twice left the starter deck at a third
+        // of the felt's height. The rail's own "Tap to cut" caption is not this budget's problem:
+        // that column scrolls, and its card is 0.85x this one.
+        val cutBase = minOf((playWidth - 50.dp) / 2.2f, (playHeight - 52.dp) / 1.45f)
         val cutWidth = if (isTablet) cutBase * 0.5f else cutBase
 
         val winner = vm.winnerInfo
@@ -406,7 +417,8 @@ fun GameTableScreen(
                     // navigation bar is down the side instead.
                     .windowInsetsPadding(WindowInsets.safeContent.only(WindowInsetsSides.Bottom))
                     .padding(horizontal = controlInsetSide)
-                    .padding(vertical = 14.dp),
+                    // Budgeted for in `height` above — keep the two in step.
+                    .padding(vertical = BOTTOM_BAND_PADDING),
             )
         }
 
@@ -1354,6 +1366,9 @@ private fun DeckPile(width: Dp, highlighted: Boolean, modifier: Modifier = Modif
 /** How the deck is drawn: four cards, each stepped up and to the right of the one below. */
 private const val DECK_STACK_CARDS = 4
 private val DECK_STACK_STEP = 2.5.dp
+
+/** Breathing room above and below the cards, and part of the height budget they are sized against. */
+private val BOTTOM_BAND_PADDING = 14.dp
 
 @Composable
 private fun PeggingArea(

@@ -1,0 +1,3 @@
+The first Play Store release of Pair for Two.
+
+Two-device cribbage over your local Wi-Fi, with the full game: the cut for deal, a real cut for the starter, pegging, and the show. Play against an iPhone or another Android device.
